@@ -1,0 +1,1522 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Gastos do Casal</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gastos">
+<link rel="apple-touch-icon" href="icon-192.svg">
+<link rel="icon" href="icon-192.svg">
+<style>
+:root{
+  --bg:#f7f8fb; --surface:#ffffff; --surface-2:#f1f3f8; --border:#e5e7ef;
+  --text:#0f172a; --muted:#64748b; --primary:#10b981; --primary-2:#059669;
+  --danger:#ef4444; --warn:#f59e0b; --info:#3b82f6;
+  --shadow:0 1px 2px rgba(15,23,42,.06),0 4px 16px rgba(15,23,42,.05);
+  --radius:16px;
+}
+[data-theme="dark"]{
+  --bg:#0b1220; --surface:#111a2e; --surface-2:#0f1729; --border:#1f2a44;
+  --text:#e6edf7; --muted:#94a3b8; --primary:#34d399; --primary-2:#10b981;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 24px rgba(0,0,0,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased;
+  padding-bottom:90px;
+}
+header{
+  position:sticky; top:0; z-index:10; background:var(--bg);
+  padding:14px 18px 8px; border-bottom:1px solid var(--border);
+}
+.row{display:flex; align-items:center; gap:10px}
+.row.between{justify-content:space-between}
+h1{font-size:18px; margin:0; font-weight:700}
+h2{font-size:15px; margin:0 0 10px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em}
+.subtitle{font-size:12px; color:var(--muted)}
+.icon-btn{
+  width:38px; height:38px; border-radius:12px; border:1px solid var(--border);
+  background:var(--surface); color:var(--text); display:grid; place-items:center;
+  cursor:pointer; font-size:18px;
+}
+.icon-btn:active{transform:scale(.96)}
+main{padding:14px 16px}
+.card{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:16px; box-shadow:var(--shadow); margin-bottom:14px;
+}
+.kpi{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.kpi .box{background:var(--surface-2); border-radius:12px; padding:12px}
+.kpi .label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
+.kpi .value{font-size:18px; font-weight:700; margin-top:4px}
+.value.pos{color:var(--primary)}
+.value.neg{color:var(--danger)}
+.month-nav{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px}
+.month-nav button{
+  background:var(--surface); border:1px solid var(--border); color:var(--text);
+  width:36px; height:36px; border-radius:10px; cursor:pointer; font-size:18px;
+}
+.month-name{font-weight:600; font-size:15px; text-transform:capitalize}
+.tabs{
+  display:grid; grid-template-columns:repeat(7,1fr); gap:4px;
+  position:fixed; bottom:0; left:0; right:0; background:var(--surface);
+  border-top:1px solid var(--border); padding:8px 8px max(8px,env(safe-area-inset-bottom)); z-index:20;
+}
+.tab{
+  background:transparent; border:0; color:var(--muted); padding:8px 4px;
+  border-radius:10px; font-size:10px; cursor:pointer; display:flex; flex-direction:column;
+  align-items:center; gap:3px; font-weight:500;
+}
+.tab .ico{font-size:20px}
+.tab.active{color:var(--primary); background:var(--surface-2)}
+.list{display:flex; flex-direction:column; gap:8px}
+.item{
+  display:flex; align-items:center; gap:12px; padding:12px; background:var(--surface-2);
+  border-radius:12px; cursor:pointer;
+}
+.item:active{background:var(--surface)}
+.item .avatar{
+  width:38px; height:38px; border-radius:10px; display:grid; place-items:center;
+  font-size:18px; background:var(--surface); border:1px solid var(--border);
+}
+.item .info{flex:1; min-width:0}
+.item .title{font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.item .meta{font-size:11px; color:var(--muted); margin-top:2px}
+.item .amount{font-weight:700; font-size:14px}
+.item .amount.neg{color:var(--danger)}
+.item .amount.pos{color:var(--primary)}
+.item button.del{
+  background:transparent; border:0; color:var(--muted); cursor:pointer; font-size:18px;
+  padding:4px 8px;
+}
+.empty{text-align:center; color:var(--muted); padding:24px 8px; font-size:13px}
+.total-row{display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); font-size:14px}
+.total-row span{color:var(--muted)}
+.total-row strong{font-size:16px; color:var(--text)}
+.btn{
+  background:var(--primary); color:#06281c; border:0; padding:12px 16px; border-radius:12px;
+  font-weight:700; cursor:pointer; font-size:14px; width:100%;
+}
+.btn.secondary{background:var(--surface-2); color:var(--text); border:1px solid var(--border)}
+.btn.danger{background:var(--danger); color:#fff}
+.fab{
+  position:fixed; right:16px; bottom:84px; width:56px; height:56px; border-radius:50%;
+  background:var(--primary); color:#06281c; border:0; font-size:28px; cursor:pointer;
+  box-shadow:0 10px 30px rgba(16,185,129,.4); z-index:15; font-weight:800;
+}
+.modal{
+  position:fixed; inset:0; background:rgba(2,6,23,.55); display:none; align-items:flex-end;
+  justify-content:center; z-index:50; padding:0;
+}
+.modal.open{display:flex}
+.sheet{
+  background:var(--surface); width:100%; max-width:520px; border-radius:20px 20px 0 0;
+  padding:18px 18px max(18px,env(safe-area-inset-bottom)); max-height:92vh; overflow:auto;
+}
+.sheet h3{margin:0 0 14px; font-size:17px}
+label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px; font-weight:600}
+input,select,textarea{
+  width:100%; padding:12px; border-radius:10px; border:1px solid var(--border);
+  background:var(--surface-2); color:var(--text); font-size:15px; font-family:inherit;
+  margin-bottom:12px;
+}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--primary); outline-offset:0}
+.field-row{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px}
+.chip{
+  padding:8px 12px; border-radius:999px; background:var(--surface-2); border:1px solid var(--border);
+  font-size:13px; cursor:pointer;
+}
+.chip.active{background:var(--primary); color:#06281c; border-color:var(--primary); font-weight:600}
+.bar{height:8px; background:var(--surface-2); border-radius:999px; overflow:hidden; margin:4px 0 0}
+.bar > span{display:block; height:100%; background:var(--primary)}
+.bar.over > span{background:var(--danger)}
+.legend{display:flex; gap:10px; font-size:11px; color:var(--muted); margin-top:6px}
+.legend .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px}
+.pp-card{background:var(--surface-2); border-radius:12px; padding:12px; margin-bottom:10px}
+.pp-head{margin-bottom:10px}
+.pp-kpis{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px}
+.pp-box{background:var(--surface); border-radius:10px; padding:10px}
+.pp-box .label{font-size:11px; color:var(--muted); margin-bottom:4px}
+.pp-box .value{font-size:15px; font-weight:700}
+.pp-line{display:flex; justify-content:space-between; font-size:12px; padding:4px 0; color:var(--muted)}
+.pp-line .pos{color:var(--primary); font-weight:600}
+.pp-line .neg{color:var(--danger); font-weight:600}
+.item.pago{opacity:0.55}
+.group-label{font-size:12px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:0.5px; margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--border)}
+.section-head{display:flex; align-items:center; justify-content:space-between; margin:6px 0 10px}
+.section-head .small{font-size:12px; color:var(--muted)}
+.totals-row{display:flex; justify-content:space-between; padding:10px 12px; background:var(--surface-2); border-radius:10px; margin-top:8px; font-size:13px}
+.totals-row strong{font-size:14px}
+.orca-item{display:flex; flex-direction:column; gap:8px; padding:12px; background:var(--surface-2); border-radius:12px; margin-bottom:8px; cursor:pointer}
+.orca-item:active{background:var(--surface)}
+.orca-header{display:flex; align-items:center; gap:8px; margin-bottom:4px}
+.orca-header .ico{font-size:20px}
+.orca-header .title{font-weight:600; flex:1}
+.orca-stats{display:flex; justify-content:space-between; gap:8px; font-size:12px; color:var(--muted)}
+.orca-sub{font-size:11px; color:var(--muted); margin-top:-4px}
+.orca-percent{font-weight:600}
+canvas{max-width:100%}
+hr{border:0; border-top:1px solid var(--border); margin:14px 0}
+.tag{display:inline-block; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:600; background:var(--surface); border:1px solid var(--border); color:var(--muted)}
+.tag.p1{color:#6366f1; border-color:#6366f1}
+.tag.p2{color:#ec4899; border-color:#ec4899}
+.tag.split{color:#0ea5e9; border-color:#0ea5e9}
+@media(min-width:640px){
+  main{max-width:560px; margin:0 auto}
+  header{max-width:560px; margin:0 auto}
+}
+</style>
+</head>
+<body data-theme="dark">
+
+<header>
+  <div class="row between">
+    <div>
+      <h1>Gastos do Casal</h1>
+      <div class="subtitle" id="couple-names">—</div>
+    </div>
+    <div class="row">
+      <button class="icon-btn" id="theme-btn" title="Tema">◐</button>
+      <button class="icon-btn" id="settings-btn" title="Configurações">⚙</button>
+    </div>
+  </div>
+  <div class="month-nav">
+    <button id="prev-month">‹</button>
+    <div class="month-name" id="month-label">—</div>
+    <button id="next-month">›</button>
+  </div>
+</header>
+
+<main>
+  <!-- Painel -->
+  <section id="view-painel" class="view">
+    <div class="card">
+      <h2>Resumo do mês</h2>
+      <div class="kpi">
+        <div class="box"><div class="label">Receita total</div><div class="value pos" id="kpi-receita">R$ 0</div></div>
+        <div class="box"><div class="label">Conta corrente</div><div class="value" id="kpi-conta">R$ 0</div></div>
+        <div class="box"><div class="label">Gasto previsto</div><div class="value" id="kpi-previsto">R$ 0</div></div>
+        <div class="box"><div class="label">Gasto real</div><div class="value neg" id="kpi-real">R$ 0</div></div>
+        <div class="box"><div class="label">Saldo previsto</div><div class="value" id="kpi-saldo-prev">R$ 0</div></div>
+        <div class="box"><div class="label">Saldo real</div><div class="value" id="kpi-saldo-real">R$ 0</div></div>
+      </div>
+      <hr>
+      <h2>Por pessoa</h2>
+      <div id="por-pessoa"></div>
+    </div>
+
+    <div class="card">
+      <h2>Gastos por categoria</h2>
+      <canvas id="chart-cat" height="200"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Receita × Gastos (últimos 6 meses)</h2>
+      <canvas id="chart-hist" height="200"></canvas>
+    </div>
+  </section>
+
+  <!-- Receitas -->
+  <section id="view-receitas" class="view" hidden>
+    <div class="card">
+      <div class="section-head">
+        <h2>Receitas do mês</h2>
+      </div>
+      <div id="lista-receitas" class="list"></div>
+    </div>
+  </section>
+
+  <!-- Fixos -->
+  <section id="view-fixos" class="view" hidden>
+    <div class="card">
+      <div class="section-head">
+        <h2>Gastos fixos</h2>
+        <span class="small">Repetem todo mês</span>
+      </div>
+      <div id="lista-fixos" class="list"></div>
+      <div class="total-row"><span>Total previsto</span><strong id="total-fixos">R$ 0</strong></div>
+    </div>
+  </section>
+
+  <!-- Variáveis e parcelas -->
+  <section id="view-variaveis" class="view" hidden>
+    <div class="card">
+      <div class="section-head">
+        <h2>Gastos do mês</h2>
+        <span class="small">Pontuais</span>
+      </div>
+      <div id="lista-variaveis" class="list"></div>
+      <div class="total-row"><span>Total do mês</span><strong id="total-variaveis">R$ 0</strong></div>
+    </div>
+    <div class="card">
+      <div class="section-head">
+        <h2>Compras parceladas</h2>
+        <span class="small">Distribuídas automaticamente</span>
+      </div>
+      <div id="lista-parcelas" class="list"></div>
+      <div class="total-row"><span>Total no mês</span><strong id="total-parcelas">R$ 0</strong></div>
+    </div>
+  </section>
+
+  <!-- Orçamentos -->
+  <section id="view-orcamentos" class="view" hidden>
+    <div class="card" id="orca-summary">
+      <h2>Resumo do orçamento</h2>
+      <div class="kpi" style="grid-template-columns:1fr">
+        <div class="box"><div class="label">Total orçado</div><div class="value" id="orca-total-meta">R$ 0</div></div>
+        <div class="box"><div class="label">Total gasto</div><div class="value neg" id="orca-total-gasto">R$ 0</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-head">
+        <h2>Por categoria</h2>
+      </div>
+      <div id="lista-orcamentos" class="list"></div>
+    </div>
+  </section>
+
+  <!-- Dívidas -->
+  <section id="view-dividas" class="view" hidden>
+    <div class="card">
+      <h2>Saldo entre vocês</h2>
+      <div class="kpi" style="grid-template-columns:1fr">
+        <div class="box" id="divida-resumo" style="text-align:center">
+          <div class="label">Tudo certo</div>
+          <div class="value pos">R$ 0,00</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-head">
+        <h2>Lançamentos</h2>
+        <span class="small">Quem pagou o quê</span>
+      </div>
+      <div id="lista-dividas" class="list"></div>
+    </div>
+  </section>
+
+  <!-- Conta -->
+  <section id="view-conta" class="view" hidden>
+    <div class="card">
+      <h2>Saldo da conta corrente</h2>
+      <div class="kpi">
+        <div class="box">
+          <div class="label" id="saldo-p1-label">Pessoa 1</div>
+          <div class="value pos" id="saldo-p1">R$ 0</div>
+        </div>
+        <div class="box">
+          <div class="label" id="saldo-p2-label">Pessoa 2</div>
+          <div class="value pos" id="saldo-p2">R$ 0</div>
+        </div>
+      </div>
+      <div class="totals-row" style="margin-top:10px"><span>Total do casal</span><strong id="saldo-total">R$ 0</strong></div>
+      <hr>
+      <label id="input-p1-label">Atualizar saldo de Pessoa 1</label>
+      <input type="number" id="input-saldo-p1" placeholder="Ex: 5230,40" step="0.01">
+      <label id="input-p2-label">Atualizar saldo de Pessoa 2</label>
+      <input type="number" id="input-saldo-p2" placeholder="Ex: 1200,00" step="0.01">
+      <button class="btn" id="btn-salvar-saldo">Salvar saldos</button>
+      <hr>
+      <h2>Projeção do mês</h2>
+      <div class="totals-row"><span>Saldo atual</span><strong id="proj-atual">R$ 0</strong></div>
+      <div class="totals-row"><span>+ Receitas previstas</span><strong id="proj-rec">R$ 0</strong></div>
+      <div class="totals-row"><span>− Gastos previstos</span><strong id="proj-gas">R$ 0</strong></div>
+      <div class="totals-row"><span><strong>Saldo previsto fim do mês</strong></span><strong id="proj-fim">R$ 0</strong></div>
+    </div>
+  </section>
+</main>
+
+<button class="fab" id="fab" title="Adicionar">+</button>
+
+<nav class="tabs">
+  <button class="tab active" data-view="painel"><span class="ico">📊</span>Painel</button>
+  <button class="tab" data-view="receitas"><span class="ico">💰</span>Receitas</button>
+  <button class="tab" data-view="fixos"><span class="ico">📌</span>Fixos</button>
+  <button class="tab" data-view="variaveis"><span class="ico">🛒</span>Gastos</button>
+  <button class="tab" data-view="orcamentos"><span class="ico">🎯</span>Meta</button>
+  <button class="tab" data-view="dividas"><span class="ico">🤝</span>Dívidas</button>
+  <button class="tab" data-view="conta"><span class="ico">🏦</span>Conta</button>
+</nav>
+
+<!-- Modal genérico -->
+<div class="modal" id="modal">
+  <div class="sheet" id="sheet"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+// ============ FIREBASE SETUP ============
+const firebaseConfig = {
+  apiKey: "AIzaSyCmxZag93OFyQdOqn4PbTX10hDPIWm5_Dg",
+  authDomain: "gastos-do-casal-3b8f7.firebaseapp.com",
+  projectId: "gastos-do-casal-3b8f7",
+  storageBucket: "gastos-do-casal-3b8f7.firebasestorage.app",
+  messagingSenderId: "696043116007",
+  appId: "1:696043116007:web:b4b405a5e5045256d05942"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const stateRef = db.collection("app").doc("state");
+
+// ============ ESTADO (local cache) ============
+const defaultState = {
+  theme:"dark",
+  pessoas:[
+    {id:"p1", nome:"Pessoa 1", cor:"#6366f1"},
+    {id:"p2", nome:"Pessoa 2", cor:"#ec4899"},
+  ],
+  receitas:{},
+  fixos:[],
+  variaveis:{},
+  parcelas:[],
+  orcamentos:{},
+  conta:{p1:0, p2:0, atualizadoEm:null},
+  dividas:[],
+  cursor:null
+};
+
+let state = JSON.parse(JSON.stringify(defaultState));
+let isInitialized = false;
+let syncInProgress = false;
+
+// Load from Firestore on startup
+function migrateState(){
+  // Migra conta.saldo (legado) → conta.p1 / conta.p2
+  if(state.conta && typeof state.conta.saldo === "number"){
+    state.conta = {p1: state.conta.saldo, p2: 0, atualizadoEm: state.conta.atualizadoEm||null};
+  }
+  if(!state.conta) state.conta = {p1:0, p2:0, atualizadoEm:null};
+  if(typeof state.conta.p1 !== "number") state.conta.p1 = 0;
+  if(typeof state.conta.p2 !== "number") state.conta.p2 = 0;
+}
+
+async function initializeApp(){
+  try {
+    const doc = await stateRef.get();
+    if(doc.exists){
+      state = Object.assign(JSON.parse(JSON.stringify(defaultState)), doc.data());
+    } else {
+      state.cursor = ymKey(new Date());
+      await stateRef.set(state);
+    }
+  } catch(e){
+    console.error("Firebase error on init:", e);
+    state.cursor = ymKey(new Date());
+  }
+  migrateState();
+  isInitialized = true;
+  render();
+  setupRealtimeSync();
+}
+
+// Real-time sync listener
+function setupRealtimeSync(){
+  stateRef.onSnapshot(doc => {
+    if(!doc.exists) return;
+    const remoteState = doc.data();
+    // Only update if data is different
+    if(JSON.stringify(state) !== JSON.stringify(remoteState)){
+      state = Object.assign(JSON.parse(JSON.stringify(defaultState)), remoteState);
+      migrateState();
+      render();
+    }
+  }, error => {
+    console.error("Sync error:", error);
+  });
+}
+
+// Save to Firestore
+async function save(){
+  if(!isInitialized || syncInProgress) return;
+  syncInProgress = true;
+  try {
+    await stateRef.set(state);
+  } catch(e){
+    console.error("Save error:", e);
+  }
+  syncInProgress = false;
+}
+
+// ============ DATAS ============
+function ymKey(d){
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+}
+function parseYm(k){
+  const [y,m]=k.split("-").map(Number);
+  return new Date(y,m-1,1);
+}
+function ymLabel(k){
+  const d = parseYm(k);
+  return d.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+}
+function shiftMonth(k,n){
+  const d = parseYm(k);
+  d.setMonth(d.getMonth()+n);
+  return ymKey(d);
+}
+
+// ============ FORMATO ============
+const fmt = v => (v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+
+// ============ CATEGORIAS ============
+const CATEGORIAS = [
+  {id:"alimentacao_cafe",nome:"Alimentação/Café",icone:"☕"},
+  {id:"compras",nome:"Compras",icone:"🛍️"},
+  {id:"compras_cartao",nome:"Compras Parceladas Cartão",icone:"💳"},
+  {id:"compras_saude",nome:"Compras Saúde",icone:"⚕️"},
+  {id:"estadia",nome:"Estadia",icone:"🏨"},
+  {id:"farmacia",nome:"Farmácia",icone:"💊"},
+  {id:"gas",nome:"Gás",icone:"🔥"},
+  {id:"lazer",nome:"Lazer",icone:"🎉"},
+  {id:"luz",nome:"Luz",icone:"💡"},
+  {id:"outros",nome:"Outros",icone:"📦"},
+  {id:"passagem",nome:"Passagem Aérea",icone:"✈️"},
+  {id:"petshop",nome:"Petshop",icone:"🐾"},
+  {id:"presente",nome:"Presente",icone:"🎁"},
+  {id:"salao",nome:"Salão",icone:"💇"},
+  {id:"alimentacao",nome:"Supermercado",icone:"🛒"},
+  {id:"transporte",nome:"Transporte Trabalho",icone:"🚇"},
+  {id:"uber",nome:"Uber",icone:"🚗"},
+];
+
+const CATEGORIAS_FIXOS = [
+  {id:"celular",nome:"Celular",icone:"📱"},
+  {id:"conselho",nome:"Conselho de Classe",icone:"📋"},
+  {id:"moradia",nome:"Condomínio",icone:"🏠"},
+  {id:"faxina",nome:"Faxineira",icone:"🧹"},
+  {id:"internet",nome:"Internet/TV",icone:"📡"},
+  {id:"iptu",nome:"IPTU",icone:"🏛️"},
+  {id:"streams",nome:"Streams",icone:"📺"},
+  {id:"terapia",nome:"Terapia",icone:"🧠"},
+  {id:"treino",nome:"Treino",icone:"🏋️"},
+];
+
+const ALL_CATS = [...CATEGORIAS, ...CATEGORIAS_FIXOS];
+const catMap = Object.fromEntries(ALL_CATS.map(c=>[c.id,c]));
+
+// ============ DIVISÃO ============
+function calcSplit(item, ym){
+  const v = Number(item.valor)||0;
+  if(item.divisao==="p1") return {p1:v, p2:0};
+  if(item.divisao==="p2") return {p1:0, p2:v};
+  if(item.divisao==="5050") return {p1:v/2, p2:v/2};
+  if(item.divisao==="proporcional"){
+    const r = totaisReceita(ym);
+    const tot = r.p1+r.p2;
+    if(tot<=0) return {p1:v/2, p2:v/2};
+    return {p1: v*(r.p1/tot), p2: v*(r.p2/tot)};
+  }
+  return {p1:v/2,p2:v/2};
+}
+
+function totaisReceita(ym){
+  const arr = state.receitas[ym]||[];
+  let p1=0,p2=0;
+  arr.forEach(r=>{ if(r.pessoaId==="p1") p1+=Number(r.valor)||0; else p2+=Number(r.valor)||0; });
+  return {p1,p2,total:p1+p2};
+}
+
+function gastosDoMes(ym){
+  const out=[];
+  state.fixos.forEach(f=>{
+    if(f.ativo===false) return;
+    if(f.inicio && f.inicio>ym) return;
+    out.push({tipo:"fixo", ...f});
+  });
+  (state.variaveis[ym]||[]).forEach(v=> out.push({tipo:"var",...v}));
+  state.parcelas.forEach(p=>{
+    const idx = mesesEntre(p.inicio, ym);
+    if(idx>=0 && idx < Number(p.parcelas)){
+      const valor = Number(p.total)/Number(p.parcelas);
+      out.push({
+        tipo:"parcela", id:p.id+"-"+idx, descricao:`${p.descricao} (${idx+1}/${p.parcelas})`,
+        valor, categoria:p.categoria, divisao:p.divisao, pessoaId:p.pessoaId
+      });
+    }
+  });
+  return out;
+}
+
+function mesesEntre(a,b){
+  if(!a||!b) return -1;
+  const da=parseYm(a), db=parseYm(b);
+  return (db.getFullYear()-da.getFullYear())*12 + (db.getMonth()-da.getMonth());
+}
+
+function totaisGastosPorPessoa(ym){
+  const arr = gastosDoMes(ym);
+  let p1=0,p2=0;
+  arr.forEach(g=>{ const s=calcSplit(g,ym); p1+=s.p1; p2+=s.p2; });
+  return {p1,p2,total:p1+p2};
+}
+
+function totalGastos(ym){
+  return totaisGastosPorPessoa(ym).total;
+}
+
+function totalFixosMes(ym){
+  let t = 0;
+  state.fixos.forEach(f=>{
+    if(f.ativo===false) return;
+    if(f.inicio && f.inicio>ym) return;
+    t += Number(f.valor)||0;
+  });
+  return t;
+}
+
+function totalParcelasMes(ym){
+  let t = 0;
+  state.parcelas.forEach(p=>{
+    const idx = mesesEntre(p.inicio,ym);
+    if(idx>=0 && idx<Number(p.parcelas)){
+      t += Number(p.total)/Number(p.parcelas);
+    }
+  });
+  return t;
+}
+
+function totalPontuaisMes(ym){
+  const arr = state.variaveis[ym]||[];
+  let t = 0;
+  arr.forEach(v=> t += Number(v.valor)||0);
+  return t;
+}
+
+function totalOrcamentos(){
+  const orc = state.orcamentos||{};
+  let t = 0;
+  Object.values(orc).forEach(o=> t += Number(o.meta)||0);
+  return t;
+}
+
+function gastosSemMeta(ym){
+  // Gastos reais em categorias que NÃO têm meta/orçamento
+  const orcs = state.orcamentos||{};
+  let total = 0;
+  const porPessoa = {p1:0, p2:0};
+  (state.variaveis[ym]||[]).forEach(v=>{
+    if(!orcs[v.categoria]){
+      total += Number(v.valor)||0;
+      const s = calcSplit(v, ym);
+      porPessoa.p1 += s.p1; porPessoa.p2 += s.p2;
+    }
+  });
+  return {total, ...porPessoa};
+}
+
+function totalPrevisto(ym){
+  return totalFixosMes(ym) + totalParcelasMes(ym) + totalOrcamentos() + gastosSemMeta(ym).total;
+}
+
+function gastoPrevistoPorPessoa(ym){
+  let p1=0, p2=0;
+  state.fixos.forEach(f=>{
+    if(f.ativo===false) return;
+    if(f.inicio && f.inicio>ym) return;
+    const s = calcSplit(f, ym);
+    p1 += s.p1; p2 += s.p2;
+  });
+  state.parcelas.forEach(p=>{
+    const idx = mesesEntre(p.inicio, ym);
+    if(idx>=0 && idx<Number(p.parcelas)){
+      const valor = Number(p.total)/Number(p.parcelas);
+      const s = calcSplit({...p, valor}, ym);
+      p1 += s.p1; p2 += s.p2;
+    }
+  });
+  // Orçamentos: cada um com sua divisão (padrão 50/50 se não definido)
+  const orcs = state.orcamentos||{};
+  Object.values(orcs).forEach(o=>{
+    const valor = Number(o.meta)||0;
+    const s = calcSplit({valor, divisao:o.divisao||"5050"}, ym);
+    p1 += s.p1; p2 += s.p2;
+  });
+  // Gastos reais em categorias sem meta
+  const sem = gastosSemMeta(ym);
+  p1 += sem.p1; p2 += sem.p2;
+  return {p1, p2, total:p1+p2};
+}
+
+function dividasPorPessoa(){
+  // Retorna o impacto das dívidas do ponto de vista de cada pessoa
+  // Positivo = vai receber, Negativo = vai pagar
+  const pend = {p1:0, p2:0};
+  const pago = {p1:0, p2:0};
+  (state.dividas||[]).forEach(d=>{
+    const v = Number(d.valor)||0;
+    const alvo = d.pago ? pago : pend;
+    if(d.devedorId==="p1"){ alvo.p1 -= v; alvo.p2 += v; }
+    else { alvo.p2 -= v; alvo.p1 += v; }
+  });
+  return {pend, pago};
+}
+
+function gastosPorCategoria(ym, filtrarDivisao){
+  const variaveis = state.variaveis[ym]||[];
+  const tot = {};
+  variaveis.forEach(v=>{
+    if(filtrarDivisao && v.divisao !== filtrarDivisao) return;
+    tot[v.categoria]=(tot[v.categoria]||0)+(Number(v.valor)||0);
+  });
+  state.parcelas.forEach(p=>{
+    if(filtrarDivisao && p.divisao !== filtrarDivisao) return;
+    const idx = mesesEntre(p.inicio,ym);
+    if(idx>=0 && idx<Number(p.parcelas)){
+      const valor = Number(p.total)/Number(p.parcelas);
+      tot[p.categoria]=(tot[p.categoria]||0)+valor;
+    }
+  });
+  return tot;
+}
+
+// ============ RENDER ============
+const $ = sel => document.querySelector(sel);
+const $$ = sel => document.querySelectorAll(sel);
+
+function setView(name){
+  $$(".view").forEach(v=>v.hidden = v.id!=="view-"+name);
+  $$(".tab").forEach(t=>t.classList.toggle("active", t.dataset.view===name));
+  render();
+}
+
+function render(){
+  if(!isInitialized) return;
+  document.body.dataset.theme = state.theme;
+  $("#couple-names").textContent = state.pessoas.map(p=>p.nome).join(" • ");
+  $("#month-label").textContent = ymLabel(state.cursor);
+  renderPainel();
+  renderReceitas();
+  renderFixos();
+  renderVariaveis();
+  renderOrcamentos();
+  renderConta();
+  renderDividas();
+}
+
+function renderPainel(){
+  const ym = state.cursor;
+  const rec = totaisReceita(ym);
+  const gas = totaisGastosPorPessoa(ym);
+  const contaTotal = (Number(state.conta.p1)||0) + (Number(state.conta.p2)||0);
+  $("#kpi-receita").textContent = fmt(rec.total);
+  $("#kpi-conta").textContent = fmt(contaTotal);
+  const previsto = totalPrevisto(ym);
+  const real = gas.total;
+  $("#kpi-previsto").textContent = fmt(previsto);
+  $("#kpi-real").textContent = fmt(real);
+  $("#kpi-real").className = "value neg";
+  const saldoReal = contaTotal + rec.total - real;
+  const saldoPrev = contaTotal + rec.total - previsto;
+  const kReal = $("#kpi-saldo-real");
+  kReal.textContent = fmt(saldoReal);
+  kReal.className = "value "+(saldoReal>=0?"pos":"neg");
+  const kPrev = $("#kpi-saldo-prev");
+  kPrev.textContent = fmt(saldoPrev);
+  kPrev.className = "value "+(saldoPrev>=0?"pos":"neg");
+
+  const gasPrev = gastoPrevistoPorPessoa(ym);
+  const div = dividasPorPessoa();
+  const wrap = $("#por-pessoa");
+  wrap.innerHTML = state.pessoas.map((p,i)=>{
+    const key = i===0?"p1":"p2";
+    const r = rec[key];
+    const gReal = gas[key];
+    const gPrev = gasPrev[key];
+    const dPend = div.pend[key];
+    const dPago = div.pago[key];
+    const conta = Number(state.conta[key])||0;
+    const saldoReal = conta + r - gReal + dPago;
+    const saldoPrev = conta + r - gPrev + dPend + dPago;
+    const dividaLine = (dPend!==0 || dPago!==0)
+      ? `<div class="pp-line"><span>Dívidas (pendente / pago)</span><span>${fmt(dPend)} / ${fmt(dPago)}</span></div>`
+      : "";
+    return `
+      <div class="pp-card">
+        <div class="pp-head"><strong>${escapeHtml(p.nome)}</strong></div>
+        <div class="pp-kpis">
+          <div class="pp-box"><div class="label">Saldo previsto</div><div class="value ${saldoPrev>=0?'pos':'neg'}">${fmt(saldoPrev)}</div></div>
+          <div class="pp-box"><div class="label">Saldo real</div><div class="value ${saldoReal>=0?'pos':'neg'}">${fmt(saldoReal)}</div></div>
+        </div>
+        <div class="pp-line"><span>Conta corrente</span><span>${fmt(conta)}</span></div>
+        <div class="pp-line"><span>Receita</span><span class="pos">${fmt(r)}</span></div>
+        <div class="pp-line"><span>Gasto previsto</span><span>${fmt(gPrev)}</span></div>
+        <div class="pp-line"><span>Gasto real</span><span class="neg">${fmt(gReal)}</span></div>
+        ${dividaLine}
+      </div>`;
+  }).join("");
+
+  drawCategoria(ym);
+  drawHistorico(ym);
+}
+
+let chartCat, chartHist;
+function drawCategoria(ym){
+  const arr = gastosDoMes(ym);
+  const tot = {};
+  arr.forEach(g=>{ tot[g.categoria]=(tot[g.categoria]||0)+(Number(g.valor)||0); });
+  const labels = Object.keys(tot).map(c=>catMap[c]?.nome||c);
+  const data = Object.values(tot);
+  const colors = ["#10b981","#3b82f6","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6","#f97316","#06b6d4","#84cc16","#a855f7","#eab308"];
+  if(chartCat) chartCat.destroy();
+  if(data.length===0){
+    const ctx = $("#chart-cat").getContext("2d");
+    ctx.clearRect(0,0,$("#chart-cat").width,$("#chart-cat").height);
+    return;
+  }
+  chartCat = new Chart($("#chart-cat"),{
+    type:"doughnut",
+    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0}]},
+    options:{plugins:{legend:{position:"bottom",labels:{color:getCss("--muted"),font:{size:11}}}}}
+  });
+}
+
+function drawHistorico(ym){
+  const labels=[], rec=[], gas=[];
+  for(let i=5;i>=0;i--){
+    const k = shiftMonth(ym,-i);
+    labels.push(parseYm(k).toLocaleDateString("pt-BR",{month:"short"}));
+    rec.push(totaisReceita(k).total);
+    gas.push(totalGastos(k));
+  }
+  if(chartHist) chartHist.destroy();
+  chartHist = new Chart($("#chart-hist"),{
+    type:"bar",
+    data:{labels,datasets:[
+      {label:"Receita",data:rec,backgroundColor:"#10b981",borderRadius:6},
+      {label:"Gastos",data:gas,backgroundColor:"#ef4444",borderRadius:6},
+    ]},
+    options:{
+      plugins:{legend:{labels:{color:getCss("--muted"),font:{size:11}}}},
+      scales:{x:{ticks:{color:getCss("--muted")},grid:{display:false}},
+              y:{ticks:{color:getCss("--muted")},grid:{color:getCss("--border")}}}
+    }
+  });
+}
+
+function getCss(v){
+  return getComputedStyle(document.body).getPropertyValue(v).trim();
+}
+
+function renderReceitas(){
+  const arr = state.receitas[state.cursor]||[];
+  const list = $("#lista-receitas");
+  if(arr.length===0){
+    list.innerHTML='<div class="empty">Nenhuma receita lançada neste mês. Toque em + para adicionar.</div>';
+    return;
+  }
+  list.innerHTML = arr.map(r=>{
+    const p = state.pessoas.find(x=>x.id===r.pessoaId)||state.pessoas[0];
+    return `
+      <div class="item" data-edit="rec" data-id="${r.id}">
+        <div class="avatar">💰</div>
+        <div class="info">
+          <div class="title">${escapeHtml(r.descricao||"Receita")}</div>
+          <div class="meta"><span class="tag ${r.pessoaId==='p1'?'p1':'p2'}">${escapeHtml(p.nome)}</span></div>
+        </div>
+        <div class="amount pos">${fmt(r.valor)}</div>
+        <button class="del" data-del="rec" data-id="${r.id}">×</button>
+      </div>`;
+  }).join("");
+}
+
+function groupLabel(divisao){
+  if(divisao==="p1") return state.pessoas[0].nome;
+  if(divisao==="p2") return state.pessoas[1].nome;
+  return "Compartilhado";
+}
+
+function groupByPessoa(items){
+  const g = {p1:[], p2:[], shared:[]};
+  items.forEach(item=>{
+    if(item.divisao==="p1") g.p1.push(item);
+    else if(item.divisao==="p2") g.p2.push(item);
+    else g.shared.push(item);
+  });
+  return g;
+}
+
+function renderGroupedHtml(groups, renderItem, valorFn){
+  let html = "";
+  const sections = [
+    {key:"p1", label:state.pessoas[0].nome, items:groups.p1},
+    {key:"p2", label:state.pessoas[1].nome, items:groups.p2},
+    {key:"shared", label:"Compartilhado", items:groups.shared},
+  ];
+  sections.forEach(s=>{
+    if(s.items.length===0) return;
+    const sub = valorFn ? s.items.reduce((t,i)=>t+valorFn(i),0) : 0;
+    const subStr = valorFn ? ` <span style="float:right;font-weight:400;font-size:11px">${fmt(sub)}</span>` : "";
+    html += `<div class="group-label">${escapeHtml(s.label)}${subStr}</div>`;
+    html += s.items.map(renderItem).join("");
+  });
+  return html;
+}
+
+function renderFixos(){
+  const list = $("#lista-fixos");
+  const ativos = state.fixos.filter(f=>f.ativo!==false && (!f.inicio || f.inicio<=state.cursor));
+  if(ativos.length===0){
+    list.innerHTML='<div class="empty">Nenhum gasto fixo cadastrado. Toque em + para adicionar.</div>';
+    $("#total-fixos").textContent = fmt(0);
+    return;
+  }
+  const groups = groupByPessoa(ativos);
+  list.innerHTML = renderGroupedHtml(groups, f=>itemHtml(f,"fix"), f=>Number(f.valor)||0);
+  const tot = ativos.reduce((s,f)=>s+(Number(f.valor)||0),0);
+  $("#total-fixos").textContent = fmt(tot);
+}
+
+function renderVariaveis(){
+  const arr = state.variaveis[state.cursor]||[];
+  const list = $("#lista-variaveis");
+  if(arr.length===0){
+    list.innerHTML = '<div class="empty">Nenhum gasto pontual neste mês.</div>';
+  } else {
+    const groups = groupByPessoa(arr);
+    list.innerHTML = renderGroupedHtml(groups, v=>itemHtml(v,"var"), v=>Number(v.valor)||0);
+  }
+  const totVar = arr.reduce((s,v)=>s+(Number(v.valor)||0),0);
+  $("#total-variaveis").textContent = fmt(totVar);
+
+  const lp = $("#lista-parcelas");
+  const ativas = state.parcelas.filter(p=>{
+    const idx = mesesEntre(p.inicio,state.cursor);
+    return idx>=0 && idx<Number(p.parcelas);
+  });
+  if(ativas.length===0){
+    lp.innerHTML = '<div class="empty">Nenhuma compra parcelada ativa.</div>';
+  } else {
+    const gp = groupByPessoa(ativas);
+    lp.innerHTML = renderGroupedHtml(gp, p=>{
+      const idx = mesesEntre(p.inicio,state.cursor);
+      const valor = Number(p.total)/Number(p.parcelas);
+      const cat = catMap[p.categoria]||catMap.outros;
+      return `
+        <div class="item" data-edit="parc" data-id="${p.id}">
+          <div class="avatar">${cat.icone}</div>
+          <div class="info">
+            <div class="title">${escapeHtml(p.descricao)} <span class="tag">${idx+1}/${p.parcelas}</span></div>
+            <div class="meta">${cat.nome}</div>
+          </div>
+          <div class="amount neg">${fmt(valor)}</div>
+          <button class="del" data-del="parc" data-id="${p.id}">×</button>
+        </div>`;
+    }, p=>Number(p.total)/Number(p.parcelas));
+  }
+  const totParc = ativas.reduce((s,p)=> s + (Number(p.total)/Number(p.parcelas)), 0);
+  $("#total-parcelas").textContent = fmt(totParc);
+}
+
+function renderOrcamentos(){
+  const orcamentos = state.orcamentos||{};
+  const lista = $("#lista-orcamentos");
+  const keys = Object.keys(orcamentos).sort((a,b)=>{
+    const nomeA = catMap[a]?.nome||a;
+    const nomeB = catMap[b]?.nome||b;
+    return nomeA.localeCompare(nomeB, "pt-BR");
+  });
+
+  if(keys.length===0){
+    lista.innerHTML='<div class="empty">Nenhum orçamento configurado. Toque em + para adicionar.</div>';
+    $("#orca-summary").style.display="none";
+    return;
+  }
+
+  $("#orca-summary").style.display="block";
+  let totalMeta = 0, totalGasto = 0;
+  // Gastos filtrados por divisão para cada meta
+  const gastosAll = gastosPorCategoria(state.cursor);
+  const gastosP1 = gastosPorCategoria(state.cursor, "p1");
+  const gastosP2 = gastosPorCategoria(state.cursor, "p2");
+  const gastosShared = {};
+  // Para compartilhado: somar 5050 + proporcional
+  (state.variaveis[state.cursor]||[]).forEach(v=>{
+    if(v.divisao!=="p1"&&v.divisao!=="p2") gastosShared[v.categoria]=(gastosShared[v.categoria]||0)+(Number(v.valor)||0);
+  });
+  state.parcelas.forEach(p=>{
+    if(p.divisao!=="p1"&&p.divisao!=="p2"){
+      const idx = mesesEntre(p.inicio,state.cursor);
+      if(idx>=0&&idx<Number(p.parcelas)) gastosShared[p.categoria]=(gastosShared[p.categoria]||0)+Number(p.total)/Number(p.parcelas);
+    }
+  });
+
+  function getGastoForOrca(catId, divisao){
+    if(divisao==="p1") return Number(gastosP1[catId])||0;
+    if(divisao==="p2") return Number(gastosP2[catId])||0;
+    return Number(gastosShared[catId])||0;
+  }
+
+  const orcaItems = keys.map(catId=>{
+    const orca = orcamentos[catId];
+    const div = orca.divisao||"5050";
+    const cat = catMap[catId]||{nome:catId,icone:"📦"};
+    const meta = Number(orca.meta)||0;
+    const gasto = getGastoForOrca(catId, div);
+    const percent = meta>0 ? ((gasto/meta)*100).toFixed(0) : 0;
+    const isOver = gasto>meta;
+
+    totalMeta += meta;
+    totalGasto += gasto;
+
+    return {divisao:div, meta, gasto, html:`
+      <div class="orca-item" data-edit="orca" data-id="${catId}">
+        <div class="orca-header">
+          <span class="ico">${cat.icone}</span>
+          <span class="title">${cat.nome}</span>
+          <span class="orca-percent">${percent}%</span>
+        </div>
+        <div class="bar ${isOver?'over':''}"><span style="width:${Math.min(percent,100)}%"></span></div>
+        <div class="orca-stats">
+          <span>Gasto: ${fmt(gasto)}</span>
+          <span>Meta: ${fmt(meta)}</span>
+        </div>
+      </div>`};
+  });
+
+  const groups = [
+    {key:"p1", label:state.pessoas[0].nome, items:orcaItems.filter(o=>o.divisao==="p1")},
+    {key:"p2", label:state.pessoas[1].nome, items:orcaItems.filter(o=>o.divisao==="p2")},
+    {key:"shared", label:"Compartilhado", items:orcaItems.filter(o=>o.divisao!=="p1"&&o.divisao!=="p2")},
+  ];
+  let orcaHtml = "";
+  groups.forEach(g=>{
+    if(g.items.length===0) return;
+    const subMeta = g.items.reduce((s,o)=>s+o.meta,0);
+    const subGasto = g.items.reduce((s,o)=>s+o.gasto,0);
+    orcaHtml += `<div class="group-label">${escapeHtml(g.label)} <span style="float:right;font-weight:400;font-size:11px">Meta ${fmt(subMeta)} · Gasto ${fmt(subGasto)}</span></div>`;
+    orcaHtml += g.items.map(o=>o.html).join("");
+  });
+  lista.innerHTML = orcaHtml;
+
+  $("#orca-total-meta").textContent = fmt(totalMeta);
+  $("#orca-total-gasto").textContent = fmt(totalGasto);
+}
+
+function itemHtml(g, kind){
+  const cat = catMap[g.categoria]||catMap.outros;
+  const editKind = kind==="fix" ? "fix" : "var";
+  return `
+    <div class="item" data-edit="${editKind}" data-id="${g.id}">
+      <div class="avatar">${cat.icone}</div>
+      <div class="info">
+        <div class="title">${escapeHtml(g.descricao)}</div>
+        <div class="meta">${cat.nome} • ${labelDivisao(g.divisao)}</div>
+      </div>
+      <div class="amount neg">${fmt(g.valor)}</div>
+      <button class="del" data-del="${kind}" data-id="${g.id}">×</button>
+    </div>`;
+}
+
+function labelDivisao(d){
+  if(d==="p1") return state.pessoas[0].nome;
+  if(d==="p2") return state.pessoas[1].nome;
+  if(d==="5050") return "50/50";
+  return "Proporcional";
+}
+
+function escapeHtml(s){
+  return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+function renderConta(){
+  const sp1 = Number(state.conta.p1)||0;
+  const sp2 = Number(state.conta.p2)||0;
+  const total = sp1 + sp2;
+  $("#saldo-p1-label").textContent = state.pessoas[0].nome;
+  $("#saldo-p2-label").textContent = state.pessoas[1].nome;
+  $("#saldo-p1").textContent = fmt(sp1);
+  $("#saldo-p2").textContent = fmt(sp2);
+  $("#saldo-total").textContent = fmt(total);
+  $("#input-p1-label").textContent = "Atualizar saldo de "+state.pessoas[0].nome;
+  $("#input-p2-label").textContent = "Atualizar saldo de "+state.pessoas[1].nome;
+  $("#input-saldo-p1").value = "";
+  $("#input-saldo-p2").value = "";
+  const rec = totaisReceita(state.cursor).total;
+  const gas = totalGastos(state.cursor);
+  $("#proj-atual").textContent = fmt(total);
+  $("#proj-rec").textContent = fmt(rec);
+  $("#proj-gas").textContent = fmt(gas);
+  $("#proj-fim").textContent = fmt(total + rec - gas);
+}
+
+function renderDividas(){
+  const arr = state.dividas||[];
+  const list = $("#lista-dividas");
+
+  // Calcular saldo: positivo = p1 deve pra p2, negativo = p2 deve pra p1
+  // Apenas dívidas pendentes (não pagas)
+  let saldo = 0;
+  arr.forEach(d=>{
+    if(d.pago) return;
+    if(d.devedorId==="p1") saldo += Number(d.valor)||0;
+    else saldo -= Number(d.valor)||0;
+  });
+
+  const resumo = $("#divida-resumo");
+  if(Math.abs(saldo)<0.01){
+    resumo.innerHTML = '<div class="label">Tudo certo entre vocês</div><div class="value pos">R$ 0,00</div>';
+  } else if(saldo>0){
+    resumo.innerHTML = `<div class="label">${escapeHtml(state.pessoas[0].nome)} deve para ${escapeHtml(state.pessoas[1].nome)}</div><div class="value neg">${fmt(Math.abs(saldo))}</div>`;
+  } else {
+    resumo.innerHTML = `<div class="label">${escapeHtml(state.pessoas[1].nome)} deve para ${escapeHtml(state.pessoas[0].nome)}</div><div class="value neg">${fmt(Math.abs(saldo))}</div>`;
+  }
+
+  if(arr.length===0){
+    list.innerHTML='<div class="empty">Nenhuma dívida lançada. Toque em + para adicionar.</div>';
+    return;
+  }
+  list.innerHTML = arr.slice().reverse().map(d=>{
+    const devedor = state.pessoas.find(p=>p.id===d.devedorId)||state.pessoas[0];
+    const credor = state.pessoas.find(p=>p.id!=d.devedorId)||state.pessoas[1];
+    return `
+      <div class="item ${d.pago?'pago':''}" data-edit="div" data-id="${d.id}">
+        <div class="avatar">${d.pago?'✅':'💸'}</div>
+        <div class="info">
+          <div class="title">${escapeHtml(d.descricao||"Dívida")}</div>
+          <div class="meta">${escapeHtml(devedor.nome)} ${d.pago?'pagou':'deve pra'} ${escapeHtml(credor.nome)}${d.pago?' • <span style="color:var(--primary)">Pago</span>':''}</div>
+        </div>
+        <div class="amount ${d.pago?'pos':'neg'}">${fmt(d.valor)}</div>
+        <button class="del" data-del="div" data-id="${d.id}">×</button>
+      </div>`;
+  }).join("");
+}
+
+window.formDivida = function(existing){
+  const isEdit = !!existing;
+  const isPago = isEdit && existing.pago;
+  openModal(`
+    <h3>${isEdit?"Editar":"Lançar"} dívida</h3>
+    <form id="f">
+      <label>Quem deve?</label>
+      <select name="devedorId">
+        ${state.pessoas.map(p=>`<option value="${p.id}" ${isEdit&&existing.devedorId===p.id?"selected":""}>${escapeHtml(p.nome)}</option>`).join("")}
+      </select>
+      <label>Descrição</label>
+      <input name="descricao" required placeholder="Ex: paguei o jantar, comprei remédio..." value="${isEdit?escapeHtml(existing.descricao||""):""}">
+      <label>Valor (R$)</label>
+      <input name="valor" type="number" step="0.01" inputmode="decimal" required value="${isEdit?existing.valor:""}">
+      <button class="btn" type="submit">Salvar</button>
+      ${isEdit?`<div style="height:8px"></div><button class="btn ${isPago?"secondary":""}" type="button" onclick="togglePagoDivida('${existing.id}')">${isPago?"Desmarcar como pago":"Marcar como pago"}</button>`:""}
+    </form>
+  `);
+  $("#f").addEventListener("submit",e=>{
+    e.preventDefault();
+    const fd=new FormData(e.target);
+    if(!state.dividas) state.dividas=[];
+    if(isEdit){
+      const i = state.dividas.findIndex(x=>x.id===existing.id);
+      if(i>=0) state.dividas[i] = {...state.dividas[i], devedorId:fd.get("devedorId"), descricao:fd.get("descricao"), valor:Number(fd.get("valor"))};
+    } else {
+      state.dividas.push({
+        id:uid(), devedorId:fd.get("devedorId"), descricao:fd.get("descricao"),
+        valor:Number(fd.get("valor")), pago:false, data:new Date().toISOString()
+      });
+    }
+    save(); closeModal(); render();
+  });
+};
+
+window.togglePagoDivida = function(id){
+  const d = (state.dividas||[]).find(x=>x.id===id);
+  if(!d) return;
+  d.pago = !d.pago;
+  if(d.pago) d.dataPagamento = new Date().toISOString();
+  else delete d.dataPagamento;
+  save(); closeModal(); render();
+};
+
+window.formSaldo = function(){
+  openModal(`
+    <h3>Atualizar saldo</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Preencha só o que quiser alterar.</p>
+    <form id="f">
+      <label>${escapeHtml(state.pessoas[0].nome)}</label>
+      <input name="p1" type="number" step="0.01" inputmode="decimal" placeholder="Saldo atual: ${fmt(Number(state.conta.p1)||0)}">
+      <label>${escapeHtml(state.pessoas[1].nome)}</label>
+      <input name="p2" type="number" step="0.01" inputmode="decimal" placeholder="Saldo atual: ${fmt(Number(state.conta.p2)||0)}">
+      <button class="btn" type="submit">Salvar</button>
+    </form>
+  `);
+  $("#f").addEventListener("submit",e=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const v1 = fd.get("p1"), v2 = fd.get("p2");
+    if(v1!=="") state.conta.p1 = Number(v1)||0;
+    if(v2!=="") state.conta.p2 = Number(v2)||0;
+    state.conta.atualizadoEm = new Date().toISOString();
+    save(); closeModal(); render();
+  });
+};
+
+window.formQuitarDivida = function(){
+  const saldo = (state.dividas||[]).reduce((s,d)=>{
+    return d.devedorId==="p1" ? s+Number(d.valor||0) : s-Number(d.valor||0);
+  },0);
+  if(Math.abs(saldo)<0.01){ alert("Não há dívidas pendentes."); return; }
+  if(confirm("Quitar todas as dívidas? Isso zera o saldo entre vocês.")){
+    state.dividas=[];
+    save(); render();
+  }
+};
+
+window.formOrcamento = function(editCatId){
+  const isEdit = !!editCatId;
+  const sorted = CATEGORIAS.slice().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
+  const orcExist = isEdit ? (state.orcamentos||{})[editCatId] : null;
+  const initialValor = orcExist ? (editCatId==="lazer" ? Number(orcExist.meta)/4 : Number(orcExist.meta)) : "";
+  const divisaoAtual = orcExist && orcExist.divisao ? orcExist.divisao : "5050";
+  openModal(`
+    <h3>${isEdit?"Editar":"Novo"} orçamento — ${ymLabel(state.cursor)}</h3>
+    <form id="f">
+      <label>Categoria</label>
+      <select name="categoria" required ${isEdit?"disabled":""}>
+        <option value="">Selecionar...</option>
+        ${sorted.map(c=>`<option value="${c.id}" ${isEdit&&editCatId===c.id?"selected":""}>${c.icone} ${c.nome}</option>`).join("")}
+      </select>
+      ${isEdit?`<input type="hidden" name="categoria" value="${editCatId}">`:""}
+      <label id="label-meta">${editCatId==="lazer"?"Meta semanal (R$)":"Meta mensal (R$)"}</label>
+      <input name="meta" type="number" step="0.01" inputmode="decimal" required value="${initialValor}">
+      ${selectDivisaoHtml(divisaoAtual)}
+      <button class="btn" type="submit">Salvar</button>
+      ${isEdit?`<div style="height:8px"></div><button class="btn danger" type="button" onclick="removerOrcamento('${editCatId}')">Apagar orçamento</button>`:""}
+    </form>
+  `);
+  if(!isEdit){
+    const catSelect = $("#f").querySelector('[name="categoria"]');
+    const labelMeta = $("#label-meta");
+    catSelect.addEventListener("change",e=>{
+      labelMeta.textContent = e.target.value==="lazer" ? "Meta semanal (R$)" : "Meta mensal (R$)";
+    });
+  }
+  $("#f").addEventListener("submit",e=>{
+    e.preventDefault();
+    const fd=new FormData(e.target);
+    const catId = fd.get("categoria");
+    let valor = Number(fd.get("meta"));
+    if(catId==="lazer") valor = valor*4;
+    state.orcamentos = state.orcamentos||{};
+    state.orcamentos[catId] = {meta:valor, tipo:catId==="lazer"?"semanal":"mensal", divisao:fd.get("divisao")};
+    save(); closeModal(); render();
+  });
+};
+
+// ============ MODAL ============
+function openModal(html){
+  $("#sheet").innerHTML = html;
+  $("#modal").classList.add("open");
+}
+function closeModal(){
+  $("#modal").classList.remove("open");
+}
+$("#modal").addEventListener("click",e=>{
+  if(e.target.id==="modal") closeModal();
+});
+
+// FAB contextual
+$("#fab").addEventListener("click",()=>{
+  const view = document.querySelector(".tab.active").dataset.view;
+  if(view==="receitas") formReceita();
+  else if(view==="fixos") formFixo();
+  else if(view==="variaveis") menuGasto();
+  else if(view==="orcamentos") formOrcamento();
+  else if(view==="dividas") formDivida();
+  else if(view==="conta") formSaldo();
+  else menuGeral();
+});
+
+function menuGeral(){
+  openModal(`
+    <h3>Adicionar</h3>
+    <button class="btn" onclick="formReceita()">💰 Receita</button>
+    <div style="height:8px"></div>
+    <button class="btn secondary" onclick="formFixo()">📌 Gasto fixo</button>
+    <div style="height:8px"></div>
+    <button class="btn secondary" onclick="formVariavel()">🛒 Gasto pontual</button>
+    <div style="height:8px"></div>
+    <button class="btn secondary" onclick="formParcela()">💳 Compra parcelada</button>
+    <div style="height:8px"></div>
+    <button class="btn secondary" onclick="formDivida()">💸 Dívida entre vocês</button>
+  `);
+}
+
+function menuGasto(){
+  openModal(`
+    <h3>Adicionar gasto</h3>
+    <button class="btn" onclick="formVariavel()">🛒 Gasto pontual</button>
+    <div style="height:8px"></div>
+    <button class="btn secondary" onclick="formParcela()">💳 Compra parcelada</button>
+  `);
+}
+
+function selectPessoaHtml(name="pessoaId", val="p1"){
+  return `<label>Pessoa</label>
+  <select name="${name}">
+    ${state.pessoas.map(p=>`<option value="${p.id}" ${p.id===val?"selected":""}>${escapeHtml(p.nome)}</option>`).join("")}
+  </select>`;
+}
+
+function selectCategoriaHtml(val="outros", forFixos=false){
+  const cats = forFixos ? ALL_CATS.slice().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR")) : CATEGORIAS.slice().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
+  return `<label>Categoria</label>
+  <select name="categoria">
+    ${cats.map(c=>`<option value="${c.id}" ${c.id===val?"selected":""}>${c.icone} ${c.nome}</option>`).join("")}
+  </select>`;
+}
+
+function selectDivisaoHtml(val="5050"){
+  return `<label>Divisão</label>
+  <select name="divisao">
+    <option value="5050" ${val==="5050"?"selected":""}>50/50</option>
+    <option value="proporcional" ${val==="proporcional"?"selected":""}>Proporcional à renda</option>
+    <option value="p1" ${val==="p1"?"selected":""}>Só ${escapeHtml(state.pessoas[0].nome)}</option>
+    <option value="p2" ${val==="p2"?"selected":""}>Só ${escapeHtml(state.pessoas[1].nome)}</option>
+  </select>`;
+}
+
+window.formReceita = function(existing){
+  const isEdit = !!existing;
+  openModal(`
+    <h3>${isEdit?"Editar":"Nova"} receita — ${ymLabel(state.cursor)}</h3>
+    <form id="f">
+      <label>Descrição</label>
+      <input name="descricao" placeholder="Salário, freela..." value="${isEdit?escapeHtml(existing.descricao||""):""}">
+      ${selectPessoaHtml("pessoaId", isEdit?existing.pessoaId:"p1")}
+      <label>Valor (R$)</label>
+      <input name="valor" type="number" step="0.01" inputmode="decimal" required value="${isEdit?existing.valor:""}">
+      <button class="btn" type="submit">Salvar</button>
+    </form>
+  `);
+  $("#f").addEventListener("submit",e=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const arr = (state.receitas[state.cursor] ||= []);
+    if(isEdit){
+      const i = arr.findIndex(x=>x.id===existing.id);
+      if(i>=0) arr[i] = {...arr[i], descricao:fd.get("descricao")||"Receita", pessoaId:fd.get("pessoaId"), valor:Number(fd.get("valor"))};
+    } else {
+      arr.push({id:uid(), descricao:fd.get("descricao")||"Receita", pessoaId:fd.get("pessoaId"), valor:Number(fd.get("valor"))});
+    }
+    save(); closeModal(); render();
+  });
+};
+
+window.formFixo = function(existing){
+  const isEdit = !!existing;
+  openModal(`
+    <h3>${isEdit?"Editar":"Novo"} gasto fixo</h3>
+    <form id="f">
+      <label>Descrição</label>
+      <input name="descricao" required placeholder="Condomínio, Netflix..." value="${isEdit?escapeHtml(existing.descricao||""):""}">
+      <div class="field-row">
+        <div>${selectCategoriaHtml(isEdit?existing.categoria:"moradia", true)}</div>
+        <div><label>Valor (R$)</label><input name="valor" type="number" step="0.01" inputmode="decimal" required value="${isEdit?existing.valor:""}"></div>
+      </div>
+      ${selectDivisaoHtml(isEdit?existing.divisao:"5050")}
+      ${isEdit?"":`<p style="font-size:12px;color:var(--muted);margin:0 0 12px">Será cobrado todo mês a partir de ${ymLabel(state.cursor)}.</p>`}
+      <button class="btn" type="submit">Salvar</button>
+    </form>
+  `);
+  $("#f").addEventListener("submit",e=>{
+    e.preventDefault();
+    const fd=new FormData(e.target);
+    if(isEdit){
+      const i = state.fixos.findIndex(x=>x.id===existing.id);
+      if(i>=0) state.fixos[i] = {...state.fixos[i], descricao:fd.get("descricao"), valor:Number(fd.get("valor")), categoria:fd.get("categoria"), divisao:fd.get("divisao")};
+    } else {
+      state.fixos.push({
+        id:uid(), descricao:fd.get("descricao"), valor:Number(fd.get("valor")),
+        categoria:fd.get("categoria"), divisao:fd.get("divisao"),
+        inicio:state.cursor, ativo:true
+      });
+    }
+    save(); closeModal(); render();
+  });
+};
+
+window.formVariavel = function(existing){
+  const isEdit = !!existing;
+  openModal(`
+    <h3>${isEdit?"Editar gasto":"Gasto pontual"} — ${ymLabel(state.cursor)}</h3>
+    <form id="f">
+      <label>Descrição</label>
+      <input name="descricao" required placeholder="Mercado, jantar..." value="${isEdit?escapeHtml(existing.descricao||""):""}">
+      <div class="field-row">
+        <div>${selectCategoriaHtml(isEdit?existing.categoria:"outros")}</div>
+        <div><label>Valor (R$)</label><input name="valor" type="number" step="0.01" inputmode="decimal" required value="${isEdit?existing.valor:""}"></div>
+      </div>
+      ${selectDivisaoHtml(isEdit?existing.divisao:"5050")}
+      <button class="btn" type="submit">Salvar</button>
+    </form>
+  `);
+  $("#f").addEventListener("submit",e=>{
+    e.preventDefault();
+    const fd=new FormData(e.target);
+    const arr = (state.variaveis[state.cursor] ||= []);
+    if(isEdit){
+      const i = arr.findIndex(x=>x.id===existing.id);
+      if(i>=0) arr[i] = {...arr[i], descricao:fd.get("descricao"), valor:Number(fd.get("valor")), categoria:fd.get("categoria"), divisao:fd.get("divisao")};
+    } else {
+      arr.push({
+        id:uid(), descricao:fd.get("descricao"), valor:Number(fd.get("valor")),
+        categoria:fd.get("categoria"), divisao:fd.get("divisao")
+      });
+    }
+    save(); closeModal(); render();
+  });
+};
+
+window.formParcela = function(existing){
+  const isEdit = !!existing;
+  openModal(`
+    <h3>${isEdit?"Editar compra parcelada":"Compra parcelada"}</h3>
+    <form id="f">
+      <label>Descrição</label>
+      <input name="descricao" required placeholder="Geladeira, viagem..." value="${isEdit?escapeHtml(existing.descricao||""):""}">
+      ${selectCategoriaHtml(isEdit?existing.categoria:"compras_cartao")}
+      <div class="field-row">
+        <div><label>Valor total (R$)</label><input name="total" type="number" step="0.01" inputmode="decimal" required value="${isEdit?existing.total:""}"></div>
+        <div><label>Nº parcelas</label><input name="parcelas" type="number" min="1" max="60" required value="${isEdit?existing.parcelas:12}"></div>
+      </div>
+      ${selectDivisaoHtml(isEdit?existing.divisao:"5050")}
+      ${isEdit?`<p style="font-size:12px;color:var(--muted);margin:0 0 12px">Início: ${ymLabel(existing.inicio)}.</p>`:`<p style="font-size:12px;color:var(--muted);margin:0 0 12px">A primeira parcela será cobrada em ${ymLabel(state.cursor)}.</p>`}
+      <button class="btn" type="submit">Salvar</button>
+    </form>
+  `);
+  $("#f").addEventListener("submit",e=>{
+    e.preventDefault();
+    const fd=new FormData(e.target);
+    if(isEdit){
+      const i = state.parcelas.findIndex(x=>x.id===existing.id);
+      if(i>=0) state.parcelas[i] = {...state.parcelas[i], descricao:fd.get("descricao"), total:Number(fd.get("total")), parcelas:Number(fd.get("parcelas")), categoria:fd.get("categoria"), divisao:fd.get("divisao")};
+    } else {
+      state.parcelas.push({
+        id:uid(), descricao:fd.get("descricao"), total:Number(fd.get("total")),
+        parcelas:Number(fd.get("parcelas")), inicio:state.cursor,
+        categoria:fd.get("categoria"), divisao:fd.get("divisao")
+      });
+    }
+    save(); closeModal(); render();
+  });
+};
+
+// ============ DELETAR ============
+document.addEventListener("click",e=>{
+  const b = e.target.closest("[data-del]");
+  if(!b) return;
+  e.stopPropagation();
+  if(!confirm("Apagar este item?")) return;
+  const id = b.dataset.id, kind = b.dataset.del;
+  if(kind==="rec") state.receitas[state.cursor] = (state.receitas[state.cursor]||[]).filter(x=>x.id!==id);
+  if(kind==="fix") state.fixos = state.fixos.filter(x=>x.id!==id);
+  if(kind==="var") state.variaveis[state.cursor] = (state.variaveis[state.cursor]||[]).filter(x=>x.id!==id);
+  if(kind==="parc") state.parcelas = state.parcelas.filter(x=>x.id!==id);
+  if(kind==="div") state.dividas = (state.dividas||[]).filter(x=>x.id!==id);
+  save(); render();
+});
+
+// ============ EDITAR ============
+document.addEventListener("click",e=>{
+  if(e.target.closest("[data-del]")) return;
+  const b = e.target.closest("[data-edit]");
+  if(!b) return;
+  const id = b.dataset.id, kind = b.dataset.edit;
+  if(kind==="rec"){
+    const item = (state.receitas[state.cursor]||[]).find(x=>x.id===id);
+    if(item) formReceita(item);
+  } else if(kind==="fix"){
+    const item = state.fixos.find(x=>x.id===id);
+    if(item) formFixo(item);
+  } else if(kind==="var"){
+    const item = (state.variaveis[state.cursor]||[]).find(x=>x.id===id);
+    if(item) formVariavel(item);
+  } else if(kind==="parc"){
+    const item = state.parcelas.find(x=>x.id===id);
+    if(item) formParcela(item);
+  } else if(kind==="div"){
+    const item = (state.dividas||[]).find(x=>x.id===id);
+    if(item) formDivida(item);
+  } else if(kind==="orca"){
+    formOrcamento(id);
+  }
+});
+
+// ============ APAGAR ORÇAMENTO ============
+window.removerOrcamento = function(catId){
+  if(!confirm("Apagar este orçamento?")) return;
+  if(state.orcamentos && state.orcamentos[catId]){
+    delete state.orcamentos[catId];
+    save(); closeModal(); render();
+  }
+};
+
+// ============ CONFIG ============
+$("#settings-btn").addEventListener("click",()=>{
+  openModal(`
+    <h3>Configurações</h3>
+    <label>Nome da pessoa 1</label>
+    <input id="np1" value="${escapeHtml(state.pessoas[0].nome)}">
+    <label>Nome da pessoa 2</label>
+    <input id="np2" value="${escapeHtml(state.pessoas[1].nome)}">
+    <button class="btn" id="b-save-cfg">Salvar nomes</button>
+    <hr>
+    <button class="btn danger" id="b-reset">Apagar tudo</button>
+  `);
+  $("#b-save-cfg").onclick=()=>{
+    state.pessoas[0].nome = $("#np1").value||"Pessoa 1";
+    state.pessoas[1].nome = $("#np2").value||"Pessoa 2";
+    save(); closeModal(); render();
+  };
+  $("#b-reset").onclick=()=>{
+    if(confirm("Apagar TODOS os dados? Não dá pra desfazer.")){
+      state = JSON.parse(JSON.stringify(defaultState));
+      state.cursor = ymKey(new Date());
+      save(); render(); closeModal();
+    }
+  };
+});
+
+$("#theme-btn").addEventListener("click",()=>{
+  state.theme = state.theme==="dark"?"light":"dark";
+  save(); render();
+});
+
+// ============ NAVEGAÇÃO ============
+$("#prev-month").onclick=()=>{ state.cursor = shiftMonth(state.cursor,-1); save(); render(); };
+$("#next-month").onclick=()=>{ state.cursor = shiftMonth(state.cursor, 1); save(); render(); };
+$$(".tab").forEach(t=>t.addEventListener("click",()=>setView(t.dataset.view)));
+
+// Saldo
+$("#btn-salvar-saldo").onclick=()=>{
+  const v1 = $("#input-saldo-p1").value;
+  const v2 = $("#input-saldo-p2").value;
+  if(v1!=="") state.conta.p1 = Number(v1)||0;
+  if(v2!=="") state.conta.p2 = Number(v2)||0;
+  state.conta.atualizadoEm = new Date().toISOString();
+  save(); render();
+};
+
+// Service Worker
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+
+// Utility
+function uid(){
+  return Math.random().toString(36).slice(2,10);
+}
+
+// Initialize app
+initializeApp();
+</script>
+</body>
+</html>

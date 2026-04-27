@@ -592,10 +592,15 @@ function totalPontuaisMes(ym){
   return t;
 }
 
-function totalOrcamentos(){
+function getMetaForMonth(orca, ym){
+  if(orca.overrides && orca.overrides[ym] !== undefined) return Number(orca.overrides[ym])||0;
+  return Number(orca.meta)||0;
+}
+
+function totalOrcamentos(ym){
   const orc = state.orcamentos||{};
   let t = 0;
-  Object.values(orc).forEach(o=> t += Number(o.meta)||0);
+  Object.entries(orc).forEach(([k,o])=> t += getMetaForMonth(o, ym));
   return t;
 }
 
@@ -615,7 +620,7 @@ function gastosSemMeta(ym){
 }
 
 function totalPrevisto(ym){
-  return totalFixosMes(ym) + totalParcelasMes(ym) + totalOrcamentos() + gastosSemMeta(ym).total;
+  return totalFixosMes(ym) + totalParcelasMes(ym) + totalOrcamentos(ym) + gastosSemMeta(ym).total;
 }
 
 function gastoPrevistoPorPessoa(ym){
@@ -636,8 +641,8 @@ function gastoPrevistoPorPessoa(ym){
   });
   // Orçamentos: cada um com sua divisão (padrão 50/50 se não definido)
   const orcs = state.orcamentos||{};
-  Object.values(orcs).forEach(o=>{
-    const valor = Number(o.meta)||0;
+  Object.entries(orcs).forEach(([k,o])=>{
+    const valor = getMetaForMonth(o, ym);
     const s = calcSplit({valor, divisao:o.divisao||"5050"}, ym);
     p1 += s.p1; p2 += s.p2;
   });
@@ -960,7 +965,8 @@ function renderOrcamentos(){
     const orca = orcamentos[catId];
     const div = orca.divisao||"5050";
     const cat = catMap[catId]||{nome:catId,icone:"📦"};
-    const meta = Number(orca.meta)||0;
+    const meta = getMetaForMonth(orca, state.cursor);
+    const isOverride = orca.overrides && orca.overrides[state.cursor] !== undefined;
     const gasto = getGastoForOrca(catId, div);
     const percent = meta>0 ? ((gasto/meta)*100).toFixed(0) : 0;
     const isOver = gasto>meta;
@@ -968,11 +974,13 @@ function renderOrcamentos(){
     totalMeta += meta;
     totalGasto += gasto;
 
+    const overrideTag = isOverride ? ' <span class="tag" style="font-size:9px">este mês</span>' : '';
+
     return {divisao:div, meta, gasto, html:`
       <div class="orca-item" data-edit="orca" data-id="${catId}">
         <div class="orca-header">
           <span class="ico">${cat.icone}</span>
-          <span class="title">${cat.nome}</span>
+          <span class="title">${cat.nome}${overrideTag}</span>
           <span class="orca-percent">${percent}%</span>
         </div>
         <div class="bar ${isOver?'over':''}"><span style="width:${Math.min(percent,100)}%"></span></div>
@@ -1173,8 +1181,10 @@ window.formOrcamento = function(editCatId){
   const isEdit = !!editCatId;
   const sorted = CATEGORIAS.slice().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
   const orcExist = isEdit ? (state.orcamentos||{})[editCatId] : null;
-  const initialValor = orcExist ? (editCatId==="lazer" ? Number(orcExist.meta)/4 : Number(orcExist.meta)) : "";
+  const metaDoMes = orcExist ? getMetaForMonth(orcExist, state.cursor) : 0;
+  const initialValor = orcExist ? (editCatId==="lazer" ? metaDoMes/4 : metaDoMes) : "";
   const divisaoAtual = orcExist && orcExist.divisao ? orcExist.divisao : "5050";
+  const isOverride = orcExist && orcExist.overrides && orcExist.overrides[state.cursor] !== undefined;
   openModal(`
     <h3>${isEdit?"Editar":"Novo"} orçamento — ${ymLabel(state.cursor)}</h3>
     <form id="f">
@@ -1186,9 +1196,16 @@ window.formOrcamento = function(editCatId){
       ${isEdit?`<input type="hidden" name="categoria" value="${editCatId}">`:""}
       <label id="label-meta">${editCatId==="lazer"?"Meta semanal (R$)":"Meta mensal (R$)"}</label>
       <input name="meta" type="number" step="0.01" inputmode="decimal" required value="${initialValor}">
+      ${isEdit?`
+      <label>Aplicar alteração em</label>
+      <select name="escopo">
+        <option value="mes" ${isOverride?"selected":""}>Só este mês (${ymLabel(state.cursor)})</option>
+        <option value="todos" ${!isOverride?"selected":""}>Todos os meses</option>
+      </select>`:""}
       ${selectDivisaoHtml(divisaoAtual)}
       <button class="btn" type="submit">Salvar</button>
       ${isEdit?`<div style="height:8px"></div><button class="btn danger" type="button" onclick="removerOrcamento('${editCatId}')">Apagar orçamento</button>`:""}
+      ${isEdit && isOverride?`<div style="height:8px"></div><button class="btn secondary" type="button" onclick="removerOverrideMes('${editCatId}')">Voltar ao valor padrão (${fmt(Number(orcExist.meta)||0)})</button>`:""}
     </form>
   `);
   if(!isEdit){
@@ -1205,9 +1222,34 @@ window.formOrcamento = function(editCatId){
     let valor = Number(fd.get("meta"));
     if(catId==="lazer") valor = valor*4;
     state.orcamentos = state.orcamentos||{};
-    state.orcamentos[catId] = {meta:valor, tipo:catId==="lazer"?"semanal":"mensal", divisao:fd.get("divisao")};
+    const escopo = fd.get("escopo")||"todos";
+    if(isEdit && escopo==="mes"){
+      // Override só este mês
+      const existing = state.orcamentos[catId]||{meta:0,tipo:"mensal"};
+      if(!existing.overrides) existing.overrides = {};
+      existing.overrides[state.cursor] = valor;
+      existing.divisao = fd.get("divisao");
+      state.orcamentos[catId] = existing;
+    } else {
+      // Todos os meses: atualizar meta padrão, manter overrides existentes
+      const existing = state.orcamentos[catId]||{};
+      state.orcamentos[catId] = {
+        ...existing,
+        meta:valor,
+        tipo:catId==="lazer"?"semanal":"mensal",
+        divisao:fd.get("divisao")
+      };
+    }
     save(); closeModal(); render();
   });
+};
+
+window.removerOverrideMes = function(catId){
+  const orc = (state.orcamentos||{})[catId];
+  if(!orc || !orc.overrides) return;
+  delete orc.overrides[state.cursor];
+  if(Object.keys(orc.overrides).length===0) delete orc.overrides;
+  save(); closeModal(); render();
 };
 
 // ============ MODAL ============

@@ -168,6 +168,9 @@ hr{border:0; border-top:1px solid var(--border); margin:14px 0}
 .tag.p1{color:#6366f1; border-color:#6366f1}
 .tag.p2{color:#ec4899; border-color:#ec4899}
 .tag.split{color:#0ea5e9; border-color:#0ea5e9}
+.tag.conta{color:#f59e0b; border-color:#f59e0b}
+.check-row{display:flex; align-items:center; gap:8px; margin-bottom:12px}
+.check-row input[type="checkbox"]{width:20px; height:20px; margin:0; accent-color:var(--primary)}
 @media(min-width:640px){
   main{max-width:560px; margin:0 auto}
   header{max-width:560px; margin:0 auto}
@@ -619,6 +622,42 @@ function gastosSemMeta(ym){
   return {total, ...porPessoa};
 }
 
+function necessarioEmConta(ym){
+  let p1=0, p2=0;
+  // Fixos marcados como conta
+  state.fixos.forEach(f=>{
+    if(f.ativo===false || !f.conta) return;
+    if(f.inicio && f.inicio>ym) return;
+    const s = calcSplit(f, ym);
+    p1 += s.p1; p2 += s.p2;
+  });
+  // Gastos pontuais marcados como conta
+  (state.variaveis[ym]||[]).forEach(v=>{
+    if(!v.conta) return;
+    const s = calcSplit(v, ym);
+    p1 += s.p1; p2 += s.p2;
+  });
+  // Parcelas marcadas como conta
+  state.parcelas.forEach(p=>{
+    if(!p.conta) return;
+    const idx = mesesEntre(p.inicio, ym);
+    if(idx>=0 && idx<Number(p.parcelas)){
+      const valor = Number(p.total)/Number(p.parcelas);
+      const s = calcSplit({...p, valor}, ym);
+      p1 += s.p1; p2 += s.p2;
+    }
+  });
+  // Metas marcadas como conta
+  const orcs = state.orcamentos||{};
+  Object.entries(orcs).forEach(([k,o])=>{
+    if(!o.conta) return;
+    const valor = getMetaForMonth(o, ym);
+    const s = calcSplit({valor, divisao:o.divisao||"5050"}, ym);
+    p1 += s.p1; p2 += s.p2;
+  });
+  return {p1, p2, total:p1+p2};
+}
+
 function totalPrevisto(ym){
   return totalFixosMes(ym) + totalParcelasMes(ym) + totalOrcamentos(ym) + gastosSemMeta(ym).total;
 }
@@ -731,6 +770,7 @@ function renderPainel(){
 
   const gasPrev = gastoPrevistoPorPessoa(ym);
   const div = dividasPorPessoa();
+  const necConta = necessarioEmConta(ym);
   const wrap = $("#por-pessoa");
   wrap.innerHTML = state.pessoas.map((p,i)=>{
     const key = i===0?"p1":"p2";
@@ -740,10 +780,15 @@ function renderPainel(){
     const dPend = div.pend[key];
     const dPago = div.pago[key];
     const conta = Number(state.conta[key])||0;
+    const necContaPessoa = necConta[key];
     const saldoReal = conta + r - gReal + dPago;
     const saldoPrev = conta + r - gPrev + dPend + dPago;
+    const contaCobre = conta >= necContaPessoa;
     const dividaLine = (dPend!==0 || dPago!==0)
       ? `<div class="pp-line"><span>Dívidas (pendente / pago)</span><span>${fmt(dPend)} / ${fmt(dPago)}</span></div>`
+      : "";
+    const contaLine = necContaPessoa > 0
+      ? `<div class="pp-line"><span>🏦 Saindo da conta</span><span class="${contaCobre?'':'neg'}" style="font-weight:600">${fmt(necContaPessoa)}</span></div>`
       : "";
     return `
       <div class="pp-card">
@@ -757,6 +802,7 @@ function renderPainel(){
         <div class="pp-line"><span>Gasto previsto</span><span>${fmt(gPrev)}</span></div>
         <div class="pp-line"><span>Gasto real</span><span class="neg">${fmt(gReal)}</span></div>
         ${dividaLine}
+        ${contaLine}
       </div>`;
   }).join("");
 
@@ -910,7 +956,7 @@ function renderVariaveis(){
         <div class="item" data-edit="parc" data-id="${p.id}">
           <div class="avatar">${cat.icone}</div>
           <div class="info">
-            <div class="title">${escapeHtml(p.descricao)} <span class="tag">${idx+1}/${p.parcelas}</span></div>
+            <div class="title">${escapeHtml(p.descricao)} <span class="tag">${idx+1}/${p.parcelas}</span>${p.conta?' <span class="tag conta">🏦</span>':''}</div>
             <div class="meta">${cat.nome}</div>
           </div>
           <div class="amount neg">${fmt(valor)}</div>
@@ -975,12 +1021,13 @@ function renderOrcamentos(){
     totalGasto += gasto;
 
     const overrideTag = isOverride ? ' <span class="tag" style="font-size:9px">este mês</span>' : '';
+    const contaTag = orca.conta ? ' <span class="tag conta">🏦</span>' : '';
 
     return {divisao:div, meta, gasto, html:`
       <div class="orca-item" data-edit="orca" data-id="${catId}">
         <div class="orca-header">
           <span class="ico">${cat.icone}</span>
-          <span class="title">${cat.nome}${overrideTag}</span>
+          <span class="title">${cat.nome}${overrideTag}${contaTag}</span>
           <span class="orca-percent">${percent}%</span>
         </div>
         <div class="bar ${isOver?'over':''}"><span style="width:${Math.min(percent,100)}%"></span></div>
@@ -1013,11 +1060,12 @@ function renderOrcamentos(){
 function itemHtml(g, kind){
   const cat = catMap[g.categoria]||catMap.outros;
   const editKind = kind==="fix" ? "fix" : "var";
+  const contaTag = g.conta ? ' <span class="tag conta">🏦</span>' : '';
   return `
     <div class="item" data-edit="${editKind}" data-id="${g.id}">
       <div class="avatar">${cat.icone}</div>
       <div class="info">
-        <div class="title">${escapeHtml(g.descricao)}</div>
+        <div class="title">${escapeHtml(g.descricao)}${contaTag}</div>
         <div class="meta">${cat.nome} • ${labelDivisao(g.divisao)}</div>
       </div>
       <div class="amount neg">${fmt(g.valor)}</div>
@@ -1203,6 +1251,7 @@ window.formOrcamento = function(editCatId){
         <option value="todos" ${!isOverride?"selected":""}>Todos os meses</option>
       </select>`:""}
       ${selectDivisaoHtml(divisaoAtual)}
+      ${checkContaHtml(orcExist&&orcExist.conta)}
       <button class="btn" type="submit">Salvar</button>
       ${isEdit?`<div style="height:8px"></div><button class="btn danger" type="button" onclick="removerOrcamento('${editCatId}')">Apagar orçamento</button>`:""}
       ${isEdit && isOverride?`<div style="height:8px"></div><button class="btn secondary" type="button" onclick="removerOverrideMes('${editCatId}')">Voltar ao valor padrão (${fmt(Number(orcExist.meta)||0)})</button>`:""}
@@ -1229,6 +1278,7 @@ window.formOrcamento = function(editCatId){
       if(!existing.overrides) existing.overrides = {};
       existing.overrides[state.cursor] = valor;
       existing.divisao = fd.get("divisao");
+      existing.conta = !!fd.get("conta");
       state.orcamentos[catId] = existing;
     } else {
       // Todos os meses: atualizar meta padrão, manter overrides existentes
@@ -1237,7 +1287,8 @@ window.formOrcamento = function(editCatId){
         ...existing,
         meta:valor,
         tipo:catId==="lazer"?"semanal":"mensal",
-        divisao:fd.get("divisao")
+        divisao:fd.get("divisao"),
+        conta:!!fd.get("conta")
       };
     }
     save(); closeModal(); render();
@@ -1315,6 +1366,13 @@ function selectCategoriaHtml(val="outros", forFixos=false){
   </select>`;
 }
 
+function checkContaHtml(checked=false){
+  return `<div class="check-row">
+    <input type="checkbox" name="conta" value="1" ${checked?"checked":""}>
+    <label style="margin:0;cursor:pointer" onclick="this.previousElementSibling.click()">🏦 Saindo direto da conta</label>
+  </div>`;
+}
+
 function selectDivisaoHtml(val="5050"){
   return `<label>Divisão</label>
   <select name="divisao">
@@ -1364,6 +1422,7 @@ window.formFixo = function(existing){
         <div><label>Valor (R$)</label><input name="valor" type="number" step="0.01" inputmode="decimal" required value="${isEdit?existing.valor:""}"></div>
       </div>
       ${selectDivisaoHtml(isEdit?existing.divisao:"5050")}
+      ${checkContaHtml(isEdit&&existing.conta)}
       ${isEdit?"":`<p style="font-size:12px;color:var(--muted);margin:0 0 12px">Será cobrado todo mês a partir de ${ymLabel(state.cursor)}.</p>`}
       <button class="btn" type="submit">Salvar</button>
     </form>
@@ -1373,12 +1432,12 @@ window.formFixo = function(existing){
     const fd=new FormData(e.target);
     if(isEdit){
       const i = state.fixos.findIndex(x=>x.id===existing.id);
-      if(i>=0) state.fixos[i] = {...state.fixos[i], descricao:fd.get("descricao"), valor:Number(fd.get("valor")), categoria:fd.get("categoria"), divisao:fd.get("divisao")};
+      if(i>=0) state.fixos[i] = {...state.fixos[i], descricao:fd.get("descricao"), valor:Number(fd.get("valor")), categoria:fd.get("categoria"), divisao:fd.get("divisao"), conta:!!fd.get("conta")};
     } else {
       state.fixos.push({
         id:uid(), descricao:fd.get("descricao"), valor:Number(fd.get("valor")),
         categoria:fd.get("categoria"), divisao:fd.get("divisao"),
-        inicio:state.cursor, ativo:true
+        inicio:state.cursor, ativo:true, conta:!!fd.get("conta")
       });
     }
     save(); closeModal(); render();
@@ -1397,6 +1456,7 @@ window.formVariavel = function(existing){
         <div><label>Valor (R$)</label><input name="valor" type="number" step="0.01" inputmode="decimal" required value="${isEdit?existing.valor:""}"></div>
       </div>
       ${selectDivisaoHtml(isEdit?existing.divisao:"5050")}
+      ${checkContaHtml(isEdit&&existing.conta)}
       <button class="btn" type="submit">Salvar</button>
     </form>
   `);
@@ -1406,11 +1466,11 @@ window.formVariavel = function(existing){
     const arr = (state.variaveis[state.cursor] ||= []);
     if(isEdit){
       const i = arr.findIndex(x=>x.id===existing.id);
-      if(i>=0) arr[i] = {...arr[i], descricao:fd.get("descricao"), valor:Number(fd.get("valor")), categoria:fd.get("categoria"), divisao:fd.get("divisao")};
+      if(i>=0) arr[i] = {...arr[i], descricao:fd.get("descricao"), valor:Number(fd.get("valor")), categoria:fd.get("categoria"), divisao:fd.get("divisao"), conta:!!fd.get("conta")};
     } else {
       arr.push({
         id:uid(), descricao:fd.get("descricao"), valor:Number(fd.get("valor")),
-        categoria:fd.get("categoria"), divisao:fd.get("divisao")
+        categoria:fd.get("categoria"), divisao:fd.get("divisao"), conta:!!fd.get("conta")
       });
     }
     save(); closeModal(); render();
@@ -1430,6 +1490,7 @@ window.formParcela = function(existing){
         <div><label>Nº parcelas</label><input name="parcelas" type="number" min="1" max="60" required value="${isEdit?existing.parcelas:12}"></div>
       </div>
       ${selectDivisaoHtml(isEdit?existing.divisao:"5050")}
+      ${checkContaHtml(isEdit&&existing.conta)}
       ${isEdit?`<p style="font-size:12px;color:var(--muted);margin:0 0 12px">Início: ${ymLabel(existing.inicio)}.</p>`:`<p style="font-size:12px;color:var(--muted);margin:0 0 12px">A primeira parcela será cobrada em ${ymLabel(state.cursor)}.</p>`}
       <button class="btn" type="submit">Salvar</button>
     </form>
@@ -1439,12 +1500,12 @@ window.formParcela = function(existing){
     const fd=new FormData(e.target);
     if(isEdit){
       const i = state.parcelas.findIndex(x=>x.id===existing.id);
-      if(i>=0) state.parcelas[i] = {...state.parcelas[i], descricao:fd.get("descricao"), total:Number(fd.get("total")), parcelas:Number(fd.get("parcelas")), categoria:fd.get("categoria"), divisao:fd.get("divisao")};
+      if(i>=0) state.parcelas[i] = {...state.parcelas[i], descricao:fd.get("descricao"), total:Number(fd.get("total")), parcelas:Number(fd.get("parcelas")), categoria:fd.get("categoria"), divisao:fd.get("divisao"), conta:!!fd.get("conta")};
     } else {
       state.parcelas.push({
         id:uid(), descricao:fd.get("descricao"), total:Number(fd.get("total")),
         parcelas:Number(fd.get("parcelas")), inicio:state.cursor,
-        categoria:fd.get("categoria"), divisao:fd.get("divisao")
+        categoria:fd.get("categoria"), divisao:fd.get("divisao"), conta:!!fd.get("conta")
       });
     }
     save(); closeModal(); render();

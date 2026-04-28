@@ -383,7 +383,7 @@ const defaultState = {
   variaveis:{},
   parcelas:[],
   orcamentos:{},
-  conta:{p1:0, p2:0, atualizadoEm:null},
+  conta:{},
   dividas:{},
   cursor:null
 };
@@ -394,13 +394,22 @@ let syncInProgress = false;
 
 // Load from Firestore on startup
 function migrateState(){
-  // Migra conta.saldo (legado) → conta.p1 / conta.p2
-  if(state.conta && typeof state.conta.saldo === "number"){
-    state.conta = {p1: state.conta.saldo, p2: 0, atualizadoEm: state.conta.atualizadoEm||null};
+  // Migra conta para formato por mês
+  if(!state.conta) state.conta = {};
+  // Formato legado 1: {saldo: number}
+  if(typeof state.conta.saldo === "number"){
+    const ym = state.cursor||ymKey(new Date());
+    const saldo = state.conta.saldo;
+    state.conta = {};
+    state.conta[ym] = {p1: saldo, p2: 0};
   }
-  if(!state.conta) state.conta = {p1:0, p2:0, atualizadoEm:null};
-  if(typeof state.conta.p1 !== "number") state.conta.p1 = 0;
-  if(typeof state.conta.p2 !== "number") state.conta.p2 = 0;
+  // Formato legado 2: {p1: number, p2: number}
+  else if(typeof state.conta.p1 === "number"){
+    const ym = state.cursor||ymKey(new Date());
+    const p1 = state.conta.p1, p2 = state.conta.p2||0;
+    state.conta = {};
+    state.conta[ym] = {p1, p2};
+  }
   // Migra dividas array → dividas por mês
   if(Array.isArray(state.dividas)){
     const porMes = {};
@@ -715,6 +724,30 @@ function contaReal(ym){
   return {p1, p2, total:p1+p2};
 }
 
+function getContaForMonth(ym){
+  const conta = state.conta||{};
+  // Se tem valor definido para esse mês, usa direto
+  if(conta[ym]) return {p1:Number(conta[ym].p1)||0, p2:Number(conta[ym].p2)||0, definido:true};
+  // Senão, projeta a partir do mês mais recente com valor definido
+  const meses = Object.keys(conta).sort();
+  let baseYm = null;
+  for(const m of meses){ if(m<=ym) baseYm = m; }
+  if(!baseYm) return {p1:0, p2:0, definido:false};
+  let p1 = Number(conta[baseYm].p1)||0;
+  let p2 = Number(conta[baseYm].p2)||0;
+  let cur = baseYm;
+  while(cur < ym){
+    const cr = contaReal(cur);
+    p1 -= cr.p1; p2 -= cr.p2;
+    cur = shiftMonth(cur, 1);
+    if(conta[cur]){
+      p1 = Number(conta[cur].p1)||0;
+      p2 = Number(conta[cur].p2)||0;
+    }
+  }
+  return {p1, p2, definido:false};
+}
+
 function totalPrevisto(ym){
   return totalFixosMes(ym) + totalParcelasMes(ym) + totalOrcamentos(ym) + gastosSemMeta(ym).total;
 }
@@ -809,7 +842,8 @@ function renderPainel(){
   const ym = state.cursor;
   const rec = totaisReceita(ym);
   const gas = totaisGastosPorPessoa(ym);
-  const contaTotal = (Number(state.conta.p1)||0) + (Number(state.conta.p2)||0);
+  const contaInfo = getContaForMonth(ym);
+  const contaTotal = contaInfo.p1 + contaInfo.p2;
   $("#kpi-receita").textContent = fmt(rec.total);
   $("#kpi-conta").textContent = fmt(contaTotal);
   const previsto = totalPrevisto(ym);
@@ -838,7 +872,7 @@ function renderPainel(){
     const gPrev = gasPrev[key];
     const dPend = div.pend[key];
     const dPago = div.pago[key];
-    const conta = Number(state.conta[key])||0;
+    const conta = contaInfo[key];
     const cpPessoa = cPrev[key];
     const crPessoa = cReal[key];
     const saldoReal = conta + r - gReal + dPago;
@@ -1150,20 +1184,27 @@ function escapeHtml(s){
 }
 
 function renderConta(){
-  const sp1 = Number(state.conta.p1)||0;
-  const sp2 = Number(state.conta.p2)||0;
+  const ym = state.cursor;
+  const ci = getContaForMonth(ym);
+  const sp1 = ci.p1, sp2 = ci.p2;
   const total = sp1 + sp2;
+  const projetado = !ci.definido;
   $("#saldo-p1-label").textContent = state.pessoas[0].nome;
   $("#saldo-p2-label").textContent = state.pessoas[1].nome;
   $("#saldo-p1").textContent = fmt(sp1);
   $("#saldo-p2").textContent = fmt(sp2);
   $("#saldo-total").textContent = fmt(total);
-  $("#input-p1-label").textContent = "Atualizar saldo de "+state.pessoas[0].nome;
-  $("#input-p2-label").textContent = "Atualizar saldo de "+state.pessoas[1].nome;
+  const tagProj = projetado ? ' <span class="tag" style="font-size:9px">projetado</span>' : '';
+  $("#saldo-p1-label").innerHTML = escapeHtml(state.pessoas[0].nome) + tagProj;
+  $("#saldo-p2-label").innerHTML = escapeHtml(state.pessoas[1].nome) + tagProj;
+  $("#input-p1-label").textContent = "Saldo de "+state.pessoas[0].nome+" em "+ymLabel(ym);
+  $("#input-p2-label").textContent = "Saldo de "+state.pessoas[1].nome+" em "+ymLabel(ym);
   $("#input-saldo-p1").value = "";
   $("#input-saldo-p2").value = "";
-  const rec = totaisReceita(state.cursor).total;
-  const gas = totalGastos(state.cursor);
+  $("#input-saldo-p1").placeholder = "Atual: "+fmt(sp1);
+  $("#input-saldo-p2").placeholder = "Atual: "+fmt(sp2);
+  const rec = totaisReceita(ym).total;
+  const gas = totalGastos(ym);
   $("#proj-atual").textContent = fmt(total);
   $("#proj-rec").textContent = fmt(rec);
   $("#proj-gas").textContent = fmt(gas);
@@ -1259,24 +1300,34 @@ window.togglePagoDivida = function(id){
 };
 
 window.formSaldo = function(){
+  const ci = getContaForMonth(state.cursor);
   openModal(`
-    <h3>Atualizar saldo</h3>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Preencha só o que quiser alterar.</p>
+    <h3>Ajustar saldo — ${ymLabel(state.cursor)}</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">${ci.definido?"Valor definido para este mês.":"Valor projetado automaticamente."} Preencha para ajustar.</p>
     <form id="f">
       <label>${escapeHtml(state.pessoas[0].nome)}</label>
-      <input name="p1" type="number" step="0.01" inputmode="decimal" placeholder="Saldo atual: ${fmt(Number(state.conta.p1)||0)}">
+      <input name="p1" type="number" step="0.01" inputmode="decimal" placeholder="Atual: ${fmt(ci.p1)}">
       <label>${escapeHtml(state.pessoas[1].nome)}</label>
-      <input name="p2" type="number" step="0.01" inputmode="decimal" placeholder="Saldo atual: ${fmt(Number(state.conta.p2)||0)}">
-      <button class="btn" type="submit">Salvar</button>
+      <input name="p2" type="number" step="0.01" inputmode="decimal" placeholder="Atual: ${fmt(ci.p2)}">
+      <button class="btn" type="submit">Salvar para ${ymLabel(state.cursor)}</button>
+      ${ci.definido?'<div style="height:8px"></div><button class="btn secondary" type="button" id="btn-remover-ajuste">Remover ajuste (voltar ao projetado)</button>':""}
     </form>
   `);
+  if(ci.definido){
+    $("#btn-remover-ajuste").addEventListener("click",()=>{
+      delete state.conta[state.cursor];
+      save(); closeModal(); render();
+    });
+  }
   $("#f").addEventListener("submit",e=>{
     e.preventDefault();
     const fd = new FormData(e.target);
     const v1 = fd.get("p1"), v2 = fd.get("p2");
-    if(v1!=="") state.conta.p1 = Number(v1)||0;
-    if(v2!=="") state.conta.p2 = Number(v2)||0;
-    state.conta.atualizadoEm = new Date().toISOString();
+    if(!state.conta) state.conta = {};
+    const existing = state.conta[state.cursor]||{p1:ci.p1, p2:ci.p2};
+    if(v1!=="") existing.p1 = Number(v1)||0;
+    if(v2!=="") existing.p2 = Number(v2)||0;
+    state.conta[state.cursor] = existing;
     save(); closeModal(); render();
   });
 };
@@ -1676,9 +1727,13 @@ $$(".tab").forEach(t=>t.addEventListener("click",()=>setView(t.dataset.view)));
 $("#btn-salvar-saldo").onclick=()=>{
   const v1 = $("#input-saldo-p1").value;
   const v2 = $("#input-saldo-p2").value;
-  if(v1!=="") state.conta.p1 = Number(v1)||0;
-  if(v2!=="") state.conta.p2 = Number(v2)||0;
-  state.conta.atualizadoEm = new Date().toISOString();
+  if(v1==="" && v2==="") return;
+  if(!state.conta) state.conta = {};
+  const ci = getContaForMonth(state.cursor);
+  const existing = state.conta[state.cursor]||{p1:ci.p1, p2:ci.p2};
+  if(v1!=="") existing.p1 = Number(v1)||0;
+  if(v2!=="") existing.p2 = Number(v2)||0;
+  state.conta[state.cursor] = existing;
   save(); render();
 };
 

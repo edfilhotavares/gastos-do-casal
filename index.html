@@ -384,7 +384,7 @@ const defaultState = {
   parcelas:[],
   orcamentos:{},
   conta:{p1:0, p2:0, atualizadoEm:null},
-  dividas:[],
+  dividas:{},
   cursor:null
 };
 
@@ -401,6 +401,35 @@ function migrateState(){
   if(!state.conta) state.conta = {p1:0, p2:0, atualizadoEm:null};
   if(typeof state.conta.p1 !== "number") state.conta.p1 = 0;
   if(typeof state.conta.p2 !== "number") state.conta.p2 = 0;
+  // Migra dividas array → dividas por mês
+  if(Array.isArray(state.dividas)){
+    const porMes = {};
+    state.dividas.forEach(d=>{
+      const ym = d.data ? ymKey(new Date(d.data)) : (state.cursor||ymKey(new Date()));
+      if(!porMes[ym]) porMes[ym] = [];
+      porMes[ym].push(d);
+    });
+    state.dividas = porMes;
+  }
+  if(!state.dividas) state.dividas = {};
+  // Migra orcamentos: chave catId → catId__divisao com campo categoria
+  if(state.orcamentos){
+    const orcs = state.orcamentos;
+    const needsMigration = Object.keys(orcs).some(k=> !k.includes("__"));
+    if(needsMigration){
+      const novo = {};
+      Object.entries(orcs).forEach(([k,o])=>{
+        if(k.includes("__")){
+          novo[k] = o; // já migrado
+        } else {
+          const div = o.divisao||"5050";
+          const newKey = k + "__" + div;
+          novo[newKey] = {...o, categoria: k};
+        }
+      });
+      state.orcamentos = novo;
+    }
+  }
 }
 
 async function initializeApp(){
@@ -595,6 +624,10 @@ function totalPontuaisMes(ym){
   return t;
 }
 
+function orcaKey(catId, divisao){
+  return catId + "__" + (divisao||"5050");
+}
+
 function getMetaForMonth(orca, ym){
   if(orca.overrides && orca.overrides[ym] !== undefined) return Number(orca.overrides[ym])||0;
   return Number(orca.meta)||0;
@@ -608,12 +641,14 @@ function totalOrcamentos(ym){
 }
 
 function gastosSemMeta(ym){
-  // Gastos reais em categorias que NÃO têm meta/orçamento
+  // Gastos reais em categorias+divisão que NÃO têm meta/orçamento
   const orcs = state.orcamentos||{};
+  const covered = new Set();
+  Object.values(orcs).forEach(o=> covered.add(orcaKey(o.categoria, o.divisao)));
   let total = 0;
   const porPessoa = {p1:0, p2:0};
   (state.variaveis[ym]||[]).forEach(v=>{
-    if(!orcs[v.categoria]){
+    if(!covered.has(orcaKey(v.categoria, v.divisao))){
       total += Number(v.valor)||0;
       const s = calcSplit(v, ym);
       porPessoa.p1 += s.p1; porPessoa.p2 += s.p2;
@@ -713,12 +748,13 @@ function gastoPrevistoPorPessoa(ym){
   return {p1, p2, total:p1+p2};
 }
 
-function dividasPorPessoa(){
-  // Retorna o impacto das dívidas do ponto de vista de cada pessoa
+function dividasPorPessoa(ym){
+  // Retorna o impacto das dívidas do mês do ponto de vista de cada pessoa
   // Positivo = vai receber, Negativo = vai pagar
   const pend = {p1:0, p2:0};
   const pago = {p1:0, p2:0};
-  (state.dividas||[]).forEach(d=>{
+  const arr = (state.dividas||{})[ym]||[];
+  arr.forEach(d=>{
     const v = Number(d.valor)||0;
     const alvo = d.pago ? pago : pend;
     if(d.devedorId==="p1"){ alvo.p1 -= v; alvo.p2 += v; }
@@ -791,7 +827,7 @@ function renderPainel(){
   kPrev.className = "value "+(saldoPrev>=0?"pos":"neg");
 
   const gasPrev = gastoPrevistoPorPessoa(ym);
-  const div = dividasPorPessoa();
+  const div = dividasPorPessoa(ym);
   const cPrev = contaPrevista(ym);
   const cReal = contaReal(ym);
   const wrap = $("#por-pessoa");
@@ -999,8 +1035,9 @@ function renderOrcamentos(){
   const orcamentos = state.orcamentos||{};
   const lista = $("#lista-orcamentos");
   const keys = Object.keys(orcamentos).sort((a,b)=>{
-    const nomeA = catMap[a]?.nome||a;
-    const nomeB = catMap[b]?.nome||b;
+    const oa = orcamentos[a], ob = orcamentos[b];
+    const nomeA = catMap[oa.categoria]?.nome||oa.categoria||a;
+    const nomeB = catMap[ob.categoria]?.nome||ob.categoria||b;
     return nomeA.localeCompare(nomeB, "pt-BR");
   });
 
@@ -1034,9 +1071,10 @@ function renderOrcamentos(){
     return Number(gastosShared[catId])||0;
   }
 
-  const orcaItems = keys.map(catId=>{
-    const orca = orcamentos[catId];
+  const orcaItems = keys.map(orcKey=>{
+    const orca = orcamentos[orcKey];
     const div = orca.divisao||"5050";
+    const catId = orca.categoria||orcKey;
     const cat = catMap[catId]||{nome:catId,icone:"📦"};
     const meta = getMetaForMonth(orca, state.cursor);
     const isOverride = orca.overrides && orca.overrides[state.cursor] !== undefined;
@@ -1051,7 +1089,7 @@ function renderOrcamentos(){
     const contaTag = orca.conta ? ' <span class="tag conta">🏦</span>' : '';
 
     return {divisao:div, meta, gasto, html:`
-      <div class="orca-item" data-edit="orca" data-id="${catId}">
+      <div class="orca-item" data-edit="orca" data-id="${orcKey}">
         <div class="orca-header">
           <span class="ico">${cat.icone}</span>
           <span class="title">${cat.nome}${overrideTag}${contaTag}</span>
@@ -1133,7 +1171,7 @@ function renderConta(){
 }
 
 function renderDividas(){
-  const arr = state.dividas||[];
+  const arr = (state.dividas||{})[state.cursor]||[];
   const list = $("#lista-dividas");
 
   // Calcular saldo: positivo = p1 deve pra p2, negativo = p2 deve pra p1
@@ -1195,12 +1233,13 @@ window.formDivida = function(existing){
   $("#f").addEventListener("submit",e=>{
     e.preventDefault();
     const fd=new FormData(e.target);
-    if(!state.dividas) state.dividas=[];
+    if(!state.dividas) state.dividas={};
+    const arr = (state.dividas[state.cursor] ||= []);
     if(isEdit){
-      const i = state.dividas.findIndex(x=>x.id===existing.id);
-      if(i>=0) state.dividas[i] = {...state.dividas[i], devedorId:fd.get("devedorId"), descricao:fd.get("descricao"), valor:Number(fd.get("valor"))};
+      const i = arr.findIndex(x=>x.id===existing.id);
+      if(i>=0) arr[i] = {...arr[i], devedorId:fd.get("devedorId"), descricao:fd.get("descricao"), valor:Number(fd.get("valor"))};
     } else {
-      state.dividas.push({
+      arr.push({
         id:uid(), devedorId:fd.get("devedorId"), descricao:fd.get("descricao"),
         valor:Number(fd.get("valor")), pago:false, data:new Date().toISOString()
       });
@@ -1210,7 +1249,8 @@ window.formDivida = function(existing){
 };
 
 window.togglePagoDivida = function(id){
-  const d = (state.dividas||[]).find(x=>x.id===id);
+  const arr = (state.dividas||{})[state.cursor]||[];
+  const d = arr.find(x=>x.id===id);
   if(!d) return;
   d.pago = !d.pago;
   if(d.pago) d.dataPagamento = new Date().toISOString();
@@ -1242,20 +1282,23 @@ window.formSaldo = function(){
 };
 
 window.formQuitarDivida = function(){
-  const saldo = (state.dividas||[]).reduce((s,d)=>{
+  const arr = (state.dividas||{})[state.cursor]||[];
+  const saldo = arr.reduce((s,d)=>{
+    if(d.pago) return s;
     return d.devedorId==="p1" ? s+Number(d.valor||0) : s-Number(d.valor||0);
   },0);
-  if(Math.abs(saldo)<0.01){ alert("Não há dívidas pendentes."); return; }
-  if(confirm("Quitar todas as dívidas? Isso zera o saldo entre vocês.")){
-    state.dividas=[];
+  if(Math.abs(saldo)<0.01){ alert("Não há dívidas pendentes neste mês."); return; }
+  if(confirm("Quitar todas as dívidas deste mês? Isso zera o saldo entre vocês.")){
+    state.dividas[state.cursor]=[];
     save(); render();
   }
 };
 
-window.formOrcamento = function(editCatId){
-  const isEdit = !!editCatId;
+window.formOrcamento = function(editKey){
+  const isEdit = !!editKey;
   const sorted = CATEGORIAS.slice().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
-  const orcExist = isEdit ? (state.orcamentos||{})[editCatId] : null;
+  const orcExist = isEdit ? (state.orcamentos||{})[editKey] : null;
+  const editCatId = orcExist ? orcExist.categoria : null;
   const metaDoMes = orcExist ? getMetaForMonth(orcExist, state.cursor) : 0;
   const initialValor = orcExist ? (editCatId==="lazer" ? metaDoMes/4 : metaDoMes) : "";
   const divisaoAtual = orcExist && orcExist.divisao ? orcExist.divisao : "5050";
@@ -1271,17 +1314,17 @@ window.formOrcamento = function(editCatId){
       ${isEdit?`<input type="hidden" name="categoria" value="${editCatId}">`:""}
       <label id="label-meta">${editCatId==="lazer"?"Meta semanal (R$)":"Meta mensal (R$)"}</label>
       <input name="meta" type="number" step="0.01" inputmode="decimal" required value="${initialValor}">
-      ${isEdit?`
-      <label>Aplicar alteração em</label>
+      <label>Aplicar em</label>
       <select name="escopo">
         <option value="mes" ${isOverride?"selected":""}>Só este mês (${ymLabel(state.cursor)})</option>
         <option value="todos" ${!isOverride?"selected":""}>Todos os meses</option>
-      </select>`:""}
-      ${selectDivisaoHtml(divisaoAtual)}
+      </select>
+      ${isEdit?`<input type="hidden" name="divisao" value="${divisaoAtual}">
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Divisão: ${labelDivisao(divisaoAtual)}</p>`:selectDivisaoHtml(divisaoAtual)}
       ${checkContaHtml(orcExist&&orcExist.conta)}
       <button class="btn" type="submit">Salvar</button>
-      ${isEdit?`<div style="height:8px"></div><button class="btn danger" type="button" onclick="removerOrcamento('${editCatId}')">Apagar orçamento</button>`:""}
-      ${isEdit && isOverride?`<div style="height:8px"></div><button class="btn secondary" type="button" onclick="removerOverrideMes('${editCatId}')">Voltar ao valor padrão (${fmt(Number(orcExist.meta)||0)})</button>`:""}
+      ${isEdit?`<div style="height:8px"></div><button class="btn danger" type="button" onclick="removerOrcamento('${editKey}')">Apagar orçamento</button>`:""}
+      ${isEdit && isOverride?`<div style="height:8px"></div><button class="btn secondary" type="button" onclick="removerOverrideMes('${editKey}')">Voltar ao valor padrão (${fmt(Number(orcExist.meta)||0)})</button>`:""}
     </form>
   `);
   if(!isEdit){
@@ -1295,26 +1338,30 @@ window.formOrcamento = function(editCatId){
     e.preventDefault();
     const fd=new FormData(e.target);
     const catId = fd.get("categoria");
+    const divisao = fd.get("divisao")||"5050";
     let valor = Number(fd.get("meta"));
     if(catId==="lazer") valor = valor*4;
     state.orcamentos = state.orcamentos||{};
+    const key = isEdit ? editKey : orcaKey(catId, divisao);
     const escopo = fd.get("escopo")||"todos";
-    if(isEdit && escopo==="mes"){
+    if(escopo==="mes"){
       // Override só este mês
-      const existing = state.orcamentos[catId]||{meta:0,tipo:"mensal"};
+      const existing = state.orcamentos[key]||{meta:0,tipo:"mensal",categoria:catId,divisao:divisao};
       if(!existing.overrides) existing.overrides = {};
       existing.overrides[state.cursor] = valor;
-      existing.divisao = fd.get("divisao");
       existing.conta = !!fd.get("conta");
-      state.orcamentos[catId] = existing;
+      existing.categoria = catId;
+      existing.divisao = divisao;
+      state.orcamentos[key] = existing;
     } else {
       // Todos os meses: atualizar meta padrão, manter overrides existentes
-      const existing = state.orcamentos[catId]||{};
-      state.orcamentos[catId] = {
+      const existing = state.orcamentos[key]||{};
+      state.orcamentos[key] = {
         ...existing,
+        categoria:catId,
         meta:valor,
         tipo:catId==="lazer"?"semanal":"mensal",
-        divisao:fd.get("divisao"),
+        divisao:divisao,
         conta:!!fd.get("conta")
       };
     }
@@ -1322,8 +1369,8 @@ window.formOrcamento = function(editCatId){
   });
 };
 
-window.removerOverrideMes = function(catId){
-  const orc = (state.orcamentos||{})[catId];
+window.removerOverrideMes = function(key){
+  const orc = (state.orcamentos||{})[key];
   if(!orc || !orc.overrides) return;
   delete orc.overrides[state.cursor];
   if(Object.keys(orc.overrides).length===0) delete orc.overrides;
@@ -1550,7 +1597,7 @@ document.addEventListener("click",e=>{
   if(kind==="fix") state.fixos = state.fixos.filter(x=>x.id!==id);
   if(kind==="var") state.variaveis[state.cursor] = (state.variaveis[state.cursor]||[]).filter(x=>x.id!==id);
   if(kind==="parc") state.parcelas = state.parcelas.filter(x=>x.id!==id);
-  if(kind==="div") state.dividas = (state.dividas||[]).filter(x=>x.id!==id);
+  if(kind==="div") state.dividas[state.cursor] = ((state.dividas||{})[state.cursor]||[]).filter(x=>x.id!==id);
   save(); render();
 });
 
@@ -1573,7 +1620,7 @@ document.addEventListener("click",e=>{
     const item = state.parcelas.find(x=>x.id===id);
     if(item) formParcela(item);
   } else if(kind==="div"){
-    const item = (state.dividas||[]).find(x=>x.id===id);
+    const item = ((state.dividas||{})[state.cursor]||[]).find(x=>x.id===id);
     if(item) formDivida(item);
   } else if(kind==="orca"){
     formOrcamento(id);
@@ -1581,10 +1628,10 @@ document.addEventListener("click",e=>{
 });
 
 // ============ APAGAR ORÇAMENTO ============
-window.removerOrcamento = function(catId){
+window.removerOrcamento = function(key){
   if(!confirm("Apagar este orçamento?")) return;
-  if(state.orcamentos && state.orcamentos[catId]){
-    delete state.orcamentos[catId];
+  if(state.orcamentos && state.orcamentos[key]){
+    delete state.orcamentos[key];
     save(); closeModal(); render();
   }
 };

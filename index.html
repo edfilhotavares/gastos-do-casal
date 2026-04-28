@@ -572,7 +572,7 @@ function gastosDoMes(ym){
   state.fixos.forEach(f=>{
     if(f.ativo===false) return;
     if(f.inicio && f.inicio>ym) return;
-    out.push({tipo:"fixo", ...f});
+    out.push({tipo:"fixo", ...f, valor:getFixoValorMes(f, ym)});
   });
   (state.variaveis[ym]||[]).forEach(v=> out.push({tipo:"var",...v}));
   state.parcelas.forEach(p=>{
@@ -610,7 +610,7 @@ function totalFixosMes(ym){
   state.fixos.forEach(f=>{
     if(f.ativo===false) return;
     if(f.inicio && f.inicio>ym) return;
-    t += Number(f.valor)||0;
+    t += getFixoValorMes(f, ym);
   });
   return t;
 }
@@ -635,6 +635,11 @@ function totalPontuaisMes(ym){
 
 function orcaKey(catId, divisao){
   return catId + "__" + (divisao||"5050");
+}
+
+function getFixoValorMes(fixo, ym){
+  if(fixo.overrides && fixo.overrides[ym] !== undefined) return Number(fixo.overrides[ym])||0;
+  return Number(fixo.valor)||0;
 }
 
 function getMetaForMonth(orca, ym){
@@ -672,7 +677,7 @@ function contaPrevista(ym){
   state.fixos.forEach(f=>{
     if(f.ativo===false || !f.conta) return;
     if(f.inicio && f.inicio>ym) return;
-    const s = calcSplit(f, ym);
+    const s = calcSplit({...f, valor:getFixoValorMes(f, ym)}, ym);
     p1 += s.p1; p2 += s.p2;
   });
   // Parcelas marcadas como conta
@@ -702,7 +707,7 @@ function contaReal(ym){
   state.fixos.forEach(f=>{
     if(f.ativo===false || !f.conta) return;
     if(f.inicio && f.inicio>ym) return;
-    const s = calcSplit(f, ym);
+    const s = calcSplit({...f, valor:getFixoValorMes(f, ym)}, ym);
     p1 += s.p1; p2 += s.p2;
   });
   // Parcelas marcadas como conta
@@ -757,7 +762,7 @@ function gastoPrevistoPorPessoa(ym){
   state.fixos.forEach(f=>{
     if(f.ativo===false) return;
     if(f.inicio && f.inicio>ym) return;
-    const s = calcSplit(f, ym);
+    const s = calcSplit({...f, valor:getFixoValorMes(f, ym)}, ym);
     p1 += s.p1; p2 += s.p2;
   });
   state.parcelas.forEach(p=>{
@@ -1012,15 +1017,32 @@ function renderGroupedHtml(groups, renderItem, valorFn){
 
 function renderFixos(){
   const list = $("#lista-fixos");
-  const ativos = state.fixos.filter(f=>f.ativo!==false && (!f.inicio || f.inicio<=state.cursor));
+  const ym = state.cursor;
+  const ativos = state.fixos.filter(f=>f.ativo!==false && (!f.inicio || f.inicio<=ym));
   if(ativos.length===0){
     list.innerHTML='<div class="empty">Nenhum gasto fixo cadastrado. Toque em + para adicionar.</div>';
     $("#total-fixos").textContent = fmt(0);
     return;
   }
-  const groups = groupByPessoa(ativos);
-  list.innerHTML = renderGroupedHtml(groups, f=>itemHtml(f,"fix"), f=>Number(f.valor)||0);
-  const tot = ativos.reduce((s,f)=>s+(Number(f.valor)||0),0);
+  // Mapear com valor do mês para exibição
+  const comValorMes = ativos.map(f=>({...f, valor:getFixoValorMes(f, ym), _isOverride:f.overrides&&f.overrides[ym]!==undefined}));
+  const groups = groupByPessoa(comValorMes);
+  list.innerHTML = renderGroupedHtml(groups, f=>{
+    const overrideTag = f._isOverride ? ' <span class="tag" style="font-size:9px">este mês</span>' : '';
+    const cat = catMap[f.categoria]||catMap.outros;
+    const contaTag = f.conta ? ' <span class="tag conta">🏦</span>' : '';
+    return `
+      <div class="item" data-edit="fix" data-id="${f.id}">
+        <div class="avatar">${cat.icone}</div>
+        <div class="info">
+          <div class="title">${escapeHtml(f.descricao)}${overrideTag}${contaTag}</div>
+          <div class="meta">${cat.nome} • ${labelDivisao(f.divisao)}</div>
+        </div>
+        <div class="amount neg">${fmt(f.valor)}</div>
+        <button class="del" data-del="fix" data-id="${f.id}">×</button>
+      </div>`;
+  }, f=>f.valor);
+  const tot = comValorMes.reduce((s,f)=>s+f.valor,0);
   $("#total-fixos").textContent = fmt(tot);
 }
 
@@ -1537,36 +1559,72 @@ window.formReceita = function(existing){
 
 window.formFixo = function(existing){
   const isEdit = !!existing;
+  const valorMes = isEdit ? getFixoValorMes(existing, state.cursor) : "";
+  const isOverride = isEdit && existing.overrides && existing.overrides[state.cursor] !== undefined;
   openModal(`
-    <h3>${isEdit?"Editar":"Novo"} gasto fixo</h3>
+    <h3>${isEdit?"Editar":"Novo"} gasto fixo — ${ymLabel(state.cursor)}</h3>
     <form id="f">
       <label>Descrição</label>
       <input name="descricao" required placeholder="Condomínio, Netflix..." value="${isEdit?escapeHtml(existing.descricao||""):""}">
       <div class="field-row">
         <div>${selectCategoriaHtml(isEdit?existing.categoria:"moradia", true)}</div>
-        <div><label>Valor (R$)</label><input name="valor" type="number" step="0.01" inputmode="decimal" required value="${isEdit?existing.valor:""}"></div>
+        <div><label>Valor (R$)</label><input name="valor" type="number" step="0.01" inputmode="decimal" required value="${isEdit?valorMes:""}"></div>
       </div>
+      <label>Aplicar em</label>
+      <select name="escopo">
+        <option value="mes" ${isOverride?"selected":""}>Só este mês (${ymLabel(state.cursor)})</option>
+        <option value="todos" ${!isOverride?"selected":""}>Todos os meses</option>
+      </select>
       ${selectDivisaoHtml(isEdit?existing.divisao:"5050")}
       ${checkContaHtml(isEdit&&existing.conta)}
-      ${isEdit?"":`<p style="font-size:12px;color:var(--muted);margin:0 0 12px">Será cobrado todo mês a partir de ${ymLabel(state.cursor)}.</p>`}
       <button class="btn" type="submit">Salvar</button>
+      ${isEdit && isOverride?`<div style="height:8px"></div><button class="btn secondary" type="button" onclick="removerOverrideFixo('${existing.id}')">Voltar ao valor padrão (${fmt(Number(existing.valor)||0)})</button>`:""}
     </form>
   `);
   $("#f").addEventListener("submit",e=>{
     e.preventDefault();
     const fd=new FormData(e.target);
+    const escopo = fd.get("escopo")||"todos";
+    const valor = Number(fd.get("valor"));
     if(isEdit){
       const i = state.fixos.findIndex(x=>x.id===existing.id);
-      if(i>=0) state.fixos[i] = {...state.fixos[i], descricao:fd.get("descricao"), valor:Number(fd.get("valor")), categoria:fd.get("categoria"), divisao:fd.get("divisao"), conta:!!fd.get("conta")};
+      if(i>=0){
+        if(escopo==="mes"){
+          if(!state.fixos[i].overrides) state.fixos[i].overrides = {};
+          state.fixos[i].overrides[state.cursor] = valor;
+          state.fixos[i].descricao = fd.get("descricao");
+          state.fixos[i].categoria = fd.get("categoria");
+          state.fixos[i].divisao = fd.get("divisao");
+          state.fixos[i].conta = !!fd.get("conta");
+        } else {
+          state.fixos[i] = {...state.fixos[i], descricao:fd.get("descricao"), valor:valor, categoria:fd.get("categoria"), divisao:fd.get("divisao"), conta:!!fd.get("conta")};
+        }
+      }
     } else {
-      state.fixos.push({
-        id:uid(), descricao:fd.get("descricao"), valor:Number(fd.get("valor")),
+      const fixo = {
+        id:uid(), descricao:fd.get("descricao"),
         categoria:fd.get("categoria"), divisao:fd.get("divisao"),
         inicio:state.cursor, ativo:true, conta:!!fd.get("conta")
-      });
+      };
+      if(escopo==="mes"){
+        fixo.valor = 0;
+        fixo.overrides = {};
+        fixo.overrides[state.cursor] = valor;
+      } else {
+        fixo.valor = valor;
+      }
+      state.fixos.push(fixo);
     }
     save(); closeModal(); render();
   });
+};
+
+window.removerOverrideFixo = function(id){
+  const f = state.fixos.find(x=>x.id===id);
+  if(!f || !f.overrides) return;
+  delete f.overrides[state.cursor];
+  if(Object.keys(f.overrides).length===0) delete f.overrides;
+  save(); closeModal(); render();
 };
 
 window.formVariavel = function(existing){

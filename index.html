@@ -742,8 +742,11 @@ function getContaForMonth(ym){
   let p2 = Number(conta[baseYm].p2)||0;
   let cur = baseYm;
   while(cur < ym){
-    const cr = contaReal(cur);
-    p1 -= cr.p1; p2 -= cr.p2;
+    // Projeção: saldo = conta + receita - gasto previsto
+    const rec = totaisReceita(cur);
+    const gasto = gastoPrevistoPorPessoa(cur);
+    p1 += rec.p1 - gasto.p1;
+    p2 += rec.p2 - gasto.p2;
     cur = shiftMonth(cur, 1);
     if(conta[cur]){
       p1 = Number(conta[cur].p1)||0;

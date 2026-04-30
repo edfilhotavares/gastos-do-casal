@@ -889,12 +889,6 @@ function renderPainel(){
     const dividaLine = (dPend!==0 || dPago!==0)
       ? `<div class="pp-line"><span>Dívidas (pendente / pago)</span><span>${fmt(dPend)} / ${fmt(dPago)}</span></div>`
       : "";
-    const contaPrevLine = cpPessoa > 0
-      ? `<div class="pp-line"><span>🏦 Conta previsto</span><span style="font-weight:600">${fmt(cpPessoa)}</span></div>`
-      : "";
-    const contaRealLine = crPessoa > 0
-      ? `<div class="pp-line"><span>🏦 Conta real</span><span class="${conta>=crPessoa?'':'neg'}" style="font-weight:600">${fmt(crPessoa)}</span></div>`
-      : "";
     return `
       <div class="pp-card">
         <div class="pp-head"><strong>${escapeHtml(p.nome)}</strong></div>
@@ -907,8 +901,9 @@ function renderPainel(){
         <div class="pp-line"><span>Gasto previsto</span><span>${fmt(gPrev)}</span></div>
         <div class="pp-line"><span>Gasto real</span><span class="neg">${fmt(gReal)}</span></div>
         ${dividaLine}
-        ${contaPrevLine}
-        ${contaRealLine}
+        <div class="pp-line" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"><span>🏦 Saldo na Conta</span><span style="font-weight:600">${fmt(conta)}</span></div>
+        <div class="pp-line"><span>🏦 Saindo da Conta (previsto)</span><span style="font-weight:600" class="${conta>=cpPessoa?'':'neg'}">${fmt(cpPessoa)}</span></div>
+        <div class="pp-line"><span>🏦 Saindo da Conta (real)</span><span style="font-weight:600" class="${conta>=crPessoa?'':'neg'}">${fmt(crPessoa)}</span></div>
       </div>`;
   }).join("");
 

@@ -871,8 +871,6 @@ function renderPainel(){
 
   const gasPrev = gastoPrevistoPorPessoa(ym);
   const div = dividasPorPessoa(ym);
-  const cPrev = contaPrevista(ym);
-  const cReal = contaReal(ym);
   const wrap = $("#por-pessoa");
   wrap.innerHTML = state.pessoas.map((p,i)=>{
     const key = i===0?"p1":"p2";
@@ -882,8 +880,6 @@ function renderPainel(){
     const dPend = div.pend[key];
     const dPago = div.pago[key];
     const conta = contaInfo[key];
-    const cpPessoa = cPrev[key];
-    const crPessoa = cReal[key];
     const saldoReal = conta + r - gReal + dPago;
     const saldoPrev = conta + r - gPrev + dPend + dPago;
     const dividaLine = (dPend!==0 || dPago!==0)
@@ -901,9 +897,7 @@ function renderPainel(){
         <div class="pp-line"><span>Gasto previsto</span><span>${fmt(gPrev)}</span></div>
         <div class="pp-line"><span>Gasto real</span><span class="neg">${fmt(gReal)}</span></div>
         ${dividaLine}
-        <div class="pp-line" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"><span>🏦 Saldo na Conta</span><span style="font-weight:600">${fmt(conta)}</span></div>
-        <div class="pp-line"><span>🏦 Saindo da Conta (previsto)</span><span style="font-weight:600" class="${conta>=cpPessoa?'':'neg'}">${fmt(cpPessoa)}</span></div>
-        <div class="pp-line"><span>🏦 Saindo da Conta (real)</span><span style="font-weight:600" class="${conta>=crPessoa?'':'neg'}">${fmt(crPessoa)}</span></div>
+        <div class="pp-line" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"><span>🏦 Conta corrente inicial</span><span style="font-weight:600">${fmt(conta)}</span></div>
       </div>`;
   }).join("");
 

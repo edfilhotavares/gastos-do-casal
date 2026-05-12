@@ -205,7 +205,7 @@ hr{border:0; border-top:1px solid var(--border); margin:14px 0}
       <div class="kpi">
         <div class="box"><div class="label">Saldo inicial</div><div class="value" id="kpi-saldo-ini">R$ 0</div></div>
         <div class="box"><div class="label">Receita</div><div class="value pos" id="kpi-receita">R$ 0</div></div>
-        <div class="box"><div class="label">Fatura cartão (M-1)</div><div class="value neg" id="kpi-fatura">R$ 0</div></div>
+        <div class="box"><div class="label">Fatura cartão</div><div class="value neg" id="kpi-fatura">R$ 0</div></div>
         <div class="box"><div class="label">PIX/Débitos</div><div class="value neg" id="kpi-pix">R$ 0</div></div>
         <div class="box"><div class="label">Saldo previsto</div><div class="value" id="kpi-saldo-prev">R$ 0</div></div>
         <div class="box"><div class="label">Saldo real</div><div class="value" id="kpi-saldo-real">R$ 0</div></div>
@@ -713,7 +713,8 @@ function faturaRealPorPessoa(ym){
 }
 
 // Saldo previsto da conta para o mês M
-// Ciclo: saldo(M) = saldo(M-1) + receita(M) - fatura_cartão(M-1) - PIX_débitos(M) + dívidas(M)
+// Ciclo: saldo_final(M) = saldo_ini(M) + receita(M+1) - fatura_cartão(M) - PIX(M) + dívidas(M)
+// saldo_ini(M+1) = saldo_final(M)
 function getSaldoForMonth(ym){
   const si = state.saldoInicial;
   if(!si || !si.mes) return {p1:0, p2:0};
@@ -722,15 +723,15 @@ function getSaldoForMonth(ym){
   let p1 = Number(si.p1)||0, p2 = Number(si.p2)||0;
   let cur = si.mes;
   while(cur < ym){
+    // Receita de M+1 (salário que paga o cartão de M)
     const next = shiftMonth(cur, 1);
-    // Receita do próximo mês (salário cai dia 1)
     const rec = totaisReceita(next);
-    // Fatura do cartão do mês atual (paga com salário do próximo mês)
+    // Fatura do cartão de M (gastos no cartão durante M)
     const fat = faturaPrevistaPorPessoa(cur);
-    // PIX/débitos do próximo mês
-    const pix = contaPrevista(next);
-    // Dívidas do próximo mês
-    const div = dividasPorPessoa(next);
+    // PIX/débitos de M (saem da conta durante M)
+    const pix = contaPrevista(cur);
+    // Dívidas de M
+    const div = dividasPorPessoa(cur);
     p1 = p1 + rec.p1 - fat.p1 - pix.p1 + div.pend.p1 + div.pago.p1;
     p2 = p2 + rec.p2 - fat.p2 - pix.p2 + div.pend.p2 + div.pago.p2;
     cur = next;
@@ -829,27 +830,29 @@ function render(){
 
 function renderPainel(){
   const ym = state.cursor;
-  const rec = totaisReceita(ym);
+  const nextYm = shiftMonth(ym, 1);
+  const recNext = totaisReceita(nextYm);
   const saldoIni = getSaldoForMonth(ym);
   const saldoIniTotal = saldoIni.p1 + saldoIni.p2;
-  const prevM1 = shiftMonth(ym, -1);
-  const fatPrev = faturaPrevistaPorPessoa(prevM1);
-  const fatReal = faturaRealPorPessoa(prevM1);
+  // Fatura do cartão de M (gastos no cartão durante este mês)
+  const fatPrev = faturaPrevistaPorPessoa(ym);
+  const fatReal = faturaRealPorPessoa(ym);
   const fatPrevTotal = fatPrev.p1 + fatPrev.p2;
+  const fatRealTotal = fatReal.p1 + fatReal.p2;
+  // PIX/débitos de M (saem da conta durante este mês)
   const pixPrev = contaPrevista(ym);
   const pixReal = contaReal(ym);
   const pixPrevTotal = pixPrev.p1 + pixPrev.p2;
+  const pixRealTotal = pixReal.p1 + pixReal.p2;
   const div = dividasPorPessoa(ym);
 
   // Resumo geral
   $("#kpi-saldo-ini").textContent = fmt(saldoIniTotal);
-  $("#kpi-receita").textContent = fmt(rec.total);
+  $("#kpi-receita").textContent = fmt(recNext.total);
   $("#kpi-fatura").textContent = fmt(fatPrevTotal);
   $("#kpi-pix").textContent = fmt(pixPrevTotal);
-  const saldoPrevTotal = saldoIniTotal + rec.total - fatPrevTotal - pixPrevTotal;
-  const fatRealTotal = fatReal.p1 + fatReal.p2;
-  const pixRealTotal = pixReal.p1 + pixReal.p2;
-  const saldoRealTotal = saldoIniTotal + rec.total - fatRealTotal - pixRealTotal;
+  const saldoPrevTotal = saldoIniTotal + recNext.total - fatPrevTotal - pixPrevTotal;
+  const saldoRealTotal = saldoIniTotal + recNext.total - fatRealTotal - pixRealTotal;
   const kPrev = $("#kpi-saldo-prev");
   kPrev.textContent = fmt(saldoPrevTotal);
   kPrev.className = "value "+(saldoPrevTotal>=0?"pos":"neg");
@@ -860,7 +863,7 @@ function renderPainel(){
   const wrap = $("#por-pessoa");
   wrap.innerHTML = state.pessoas.map((p,i)=>{
     const key = i===0?"p1":"p2";
-    const r = rec[key];
+    const r = recNext[key];
     const si = saldoIni[key];
     const fp = fatPrev[key];
     const fr = fatReal[key];
@@ -881,9 +884,9 @@ function renderPainel(){
           <div class="pp-box"><div class="label">Saldo real</div><div class="value ${saldoReal>=0?'pos':'neg'}">${fmt(saldoReal)}</div></div>
         </div>
         <div class="pp-line"><span>Saldo inicial</span><span>${fmt(si)}</span></div>
-        <div class="pp-line"><span>Receita</span><span class="pos">${fmt(r)}</span></div>
-        <div class="pp-line"><span>Fatura cartão (${ymLabel(prevM1)})</span><span class="neg">${fmt(fp)}</span></div>
-        <div class="pp-line"><span>Fatura real (${ymLabel(prevM1)})</span><span class="neg">${fmt(fr)}</span></div>
+        <div class="pp-line"><span>Receita (${ymLabel(nextYm)})</span><span class="pos">${fmt(r)}</span></div>
+        <div class="pp-line"><span>Fatura cartão (previsto)</span><span class="neg">${fmt(fp)}</span></div>
+        <div class="pp-line"><span>Fatura cartão (real)</span><span class="neg">${fmt(fr)}</span></div>
         <div class="pp-line"><span>🏦 PIX/Débitos (previsto)</span><span>${fmt(pp)}</span></div>
         <div class="pp-line"><span>🏦 PIX/Débitos (real)</span><span class="neg">${fmt(pr)}</span></div>
         ${dividaLine}

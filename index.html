@@ -203,10 +203,10 @@ hr{border:0; border-top:1px solid var(--border); margin:14px 0}
     <div class="card">
       <h2>Resumo do mês</h2>
       <div class="kpi">
-        <div class="box"><div class="label">Receita total</div><div class="value pos" id="kpi-receita">R$ 0</div></div>
-        <div class="box"><div class="label">Conta corrente</div><div class="value" id="kpi-conta">R$ 0</div></div>
-        <div class="box"><div class="label">Gasto previsto</div><div class="value" id="kpi-previsto">R$ 0</div></div>
-        <div class="box"><div class="label">Gasto real</div><div class="value neg" id="kpi-real">R$ 0</div></div>
+        <div class="box"><div class="label">Saldo inicial</div><div class="value" id="kpi-saldo-ini">R$ 0</div></div>
+        <div class="box"><div class="label">Receita</div><div class="value pos" id="kpi-receita">R$ 0</div></div>
+        <div class="box"><div class="label">Fatura cartão (M-1)</div><div class="value neg" id="kpi-fatura">R$ 0</div></div>
+        <div class="box"><div class="label">PIX/Débitos</div><div class="value neg" id="kpi-pix">R$ 0</div></div>
         <div class="box"><div class="label">Saldo previsto</div><div class="value" id="kpi-saldo-prev">R$ 0</div></div>
         <div class="box"><div class="label">Saldo real</div><div class="value" id="kpi-saldo-real">R$ 0</div></div>
       </div>
@@ -305,35 +305,6 @@ hr{border:0; border-top:1px solid var(--border); margin:14px 0}
     </div>
   </section>
 
-  <!-- Conta -->
-  <section id="view-conta" class="view" hidden>
-    <div class="card">
-      <h2>Saldo da conta corrente</h2>
-      <div class="kpi">
-        <div class="box">
-          <div class="label" id="saldo-p1-label">Pessoa 1</div>
-          <div class="value pos" id="saldo-p1">R$ 0</div>
-        </div>
-        <div class="box">
-          <div class="label" id="saldo-p2-label">Pessoa 2</div>
-          <div class="value pos" id="saldo-p2">R$ 0</div>
-        </div>
-      </div>
-      <div class="totals-row" style="margin-top:10px"><span>Total do casal</span><strong id="saldo-total">R$ 0</strong></div>
-      <hr>
-      <label id="input-p1-label">Atualizar saldo de Pessoa 1</label>
-      <input type="number" id="input-saldo-p1" placeholder="Ex: 5230,40" step="0.01">
-      <label id="input-p2-label">Atualizar saldo de Pessoa 2</label>
-      <input type="number" id="input-saldo-p2" placeholder="Ex: 1200,00" step="0.01">
-      <button class="btn" id="btn-salvar-saldo">Salvar saldos</button>
-      <hr>
-      <h2>Projeção do mês</h2>
-      <div class="totals-row"><span>Saldo atual</span><strong id="proj-atual">R$ 0</strong></div>
-      <div class="totals-row"><span>+ Receitas previstas</span><strong id="proj-rec">R$ 0</strong></div>
-      <div class="totals-row"><span>− Gastos previstos</span><strong id="proj-gas">R$ 0</strong></div>
-      <div class="totals-row"><span><strong>Saldo previsto fim do mês</strong></span><strong id="proj-fim">R$ 0</strong></div>
-    </div>
-  </section>
 </main>
 
 <button class="fab" id="fab" title="Adicionar">+</button>
@@ -345,7 +316,6 @@ hr{border:0; border-top:1px solid var(--border); margin:14px 0}
   <button class="tab" data-view="variaveis"><span class="ico">🛒</span>Gastos</button>
   <button class="tab" data-view="orcamentos"><span class="ico">🎯</span>Meta</button>
   <button class="tab" data-view="dividas"><span class="ico">🤝</span>Dívidas</button>
-  <button class="tab" data-view="conta"><span class="ico">🏦</span>Conta</button>
 </nav>
 
 <!-- Modal genérico -->
@@ -384,6 +354,7 @@ const defaultState = {
   parcelas:[],
   orcamentos:{},
   conta:{},
+  saldoInicial:null,
   dividas:{},
   cursor:null
 };
@@ -729,32 +700,42 @@ function contaReal(ym){
   return {p1, p2, total:p1+p2};
 }
 
-function getContaForMonth(ym){
-  const conta = state.conta||{};
-  // Se tem valor definido para esse mês, usa direto
-  if(conta[ym]) return {p1:Number(conta[ym].p1)||0, p2:Number(conta[ym].p2)||0, definido:true};
-  // Senão, projeta a partir do mês mais recente com valor definido
-  const meses = Object.keys(conta).sort();
-  let baseYm = null;
-  for(const m of meses){ if(m<=ym) baseYm = m; }
-  if(!baseYm) return {p1:0, p2:0, definido:false};
-  let p1 = Number(conta[baseYm].p1)||0;
-  let p2 = Number(conta[baseYm].p2)||0;
-  let cur = baseYm;
+// Calcula fatura do cartão do mês (gastos NÃO marcados como "conta") por pessoa
+function faturaPrevistaPorPessoa(ym){
+  const total = gastoPrevistoPorPessoa(ym);
+  const conta = contaPrevista(ym);
+  return {p1: total.p1 - conta.p1, p2: total.p2 - conta.p2};
+}
+function faturaRealPorPessoa(ym){
+  const total = totaisGastosPorPessoa(ym);
+  const conta = contaReal(ym);
+  return {p1: total.p1 - conta.p1, p2: total.p2 - conta.p2};
+}
+
+// Saldo previsto da conta para o mês M
+// Ciclo: saldo(M) = saldo(M-1) + receita(M) - fatura_cartão(M-1) - PIX_débitos(M) + dívidas(M)
+function getSaldoForMonth(ym){
+  const si = state.saldoInicial;
+  if(!si || !si.mes) return {p1:0, p2:0};
+  if(ym < si.mes) return {p1:0, p2:0};
+  if(ym === si.mes) return {p1:Number(si.p1)||0, p2:Number(si.p2)||0};
+  let p1 = Number(si.p1)||0, p2 = Number(si.p2)||0;
+  let cur = si.mes;
   while(cur < ym){
-    // Projeção: saldo = conta + receita - gasto previsto + dívidas
-    const rec = totaisReceita(cur);
-    const gasto = gastoPrevistoPorPessoa(cur);
-    const div = dividasPorPessoa(cur);
-    p1 += rec.p1 - gasto.p1 + div.pend.p1 + div.pago.p1;
-    p2 += rec.p2 - gasto.p2 + div.pend.p2 + div.pago.p2;
-    cur = shiftMonth(cur, 1);
-    if(conta[cur]){
-      p1 = Number(conta[cur].p1)||0;
-      p2 = Number(conta[cur].p2)||0;
-    }
+    const next = shiftMonth(cur, 1);
+    // Receita do próximo mês (salário cai dia 1)
+    const rec = totaisReceita(next);
+    // Fatura do cartão do mês atual (paga com salário do próximo mês)
+    const fat = faturaPrevistaPorPessoa(cur);
+    // PIX/débitos do próximo mês
+    const pix = contaPrevista(next);
+    // Dívidas do próximo mês
+    const div = dividasPorPessoa(next);
+    p1 = p1 + rec.p1 - fat.p1 - pix.p1 + div.pend.p1 + div.pago.p1;
+    p2 = p2 + rec.p2 - fat.p2 - pix.p2 + div.pend.p2 + div.pago.p2;
+    cur = next;
   }
-  return {p1, p2, definido:false};
+  return {p1, p2};
 }
 
 function totalPrevisto(ym){
@@ -843,45 +824,52 @@ function render(){
   renderFixos();
   renderVariaveis();
   renderOrcamentos();
-  renderConta();
   renderDividas();
 }
 
 function renderPainel(){
   const ym = state.cursor;
   const rec = totaisReceita(ym);
-  const gas = totaisGastosPorPessoa(ym);
-  const contaInfo = getContaForMonth(ym);
-  const contaTotal = contaInfo.p1 + contaInfo.p2;
-  $("#kpi-receita").textContent = fmt(rec.total);
-  $("#kpi-conta").textContent = fmt(contaTotal);
-  const previsto = totalPrevisto(ym);
-  const real = gas.total;
-  $("#kpi-previsto").textContent = fmt(previsto);
-  $("#kpi-real").textContent = fmt(real);
-  $("#kpi-real").className = "value neg";
-  const saldoReal = contaTotal + rec.total - real;
-  const saldoPrev = contaTotal + rec.total - previsto;
-  const kReal = $("#kpi-saldo-real");
-  kReal.textContent = fmt(saldoReal);
-  kReal.className = "value "+(saldoReal>=0?"pos":"neg");
-  const kPrev = $("#kpi-saldo-prev");
-  kPrev.textContent = fmt(saldoPrev);
-  kPrev.className = "value "+(saldoPrev>=0?"pos":"neg");
-
-  const gasPrev = gastoPrevistoPorPessoa(ym);
+  const saldoIni = getSaldoForMonth(ym);
+  const saldoIniTotal = saldoIni.p1 + saldoIni.p2;
+  const prevM1 = shiftMonth(ym, -1);
+  const fatPrev = faturaPrevistaPorPessoa(prevM1);
+  const fatReal = faturaRealPorPessoa(prevM1);
+  const fatPrevTotal = fatPrev.p1 + fatPrev.p2;
+  const pixPrev = contaPrevista(ym);
+  const pixReal = contaReal(ym);
+  const pixPrevTotal = pixPrev.p1 + pixPrev.p2;
   const div = dividasPorPessoa(ym);
+
+  // Resumo geral
+  $("#kpi-saldo-ini").textContent = fmt(saldoIniTotal);
+  $("#kpi-receita").textContent = fmt(rec.total);
+  $("#kpi-fatura").textContent = fmt(fatPrevTotal);
+  $("#kpi-pix").textContent = fmt(pixPrevTotal);
+  const saldoPrevTotal = saldoIniTotal + rec.total - fatPrevTotal - pixPrevTotal;
+  const fatRealTotal = fatReal.p1 + fatReal.p2;
+  const pixRealTotal = pixReal.p1 + pixReal.p2;
+  const saldoRealTotal = saldoIniTotal + rec.total - fatRealTotal - pixRealTotal;
+  const kPrev = $("#kpi-saldo-prev");
+  kPrev.textContent = fmt(saldoPrevTotal);
+  kPrev.className = "value "+(saldoPrevTotal>=0?"pos":"neg");
+  const kReal = $("#kpi-saldo-real");
+  kReal.textContent = fmt(saldoRealTotal);
+  kReal.className = "value "+(saldoRealTotal>=0?"pos":"neg");
+
   const wrap = $("#por-pessoa");
   wrap.innerHTML = state.pessoas.map((p,i)=>{
     const key = i===0?"p1":"p2";
     const r = rec[key];
-    const gReal = gas[key];
-    const gPrev = gasPrev[key];
+    const si = saldoIni[key];
+    const fp = fatPrev[key];
+    const fr = fatReal[key];
+    const pp = pixPrev[key];
+    const pr = pixReal[key];
     const dPend = div.pend[key];
     const dPago = div.pago[key];
-    const conta = contaInfo[key];
-    const saldoReal = conta + r - gReal + dPago;
-    const saldoPrev = conta + r - gPrev + dPend + dPago;
+    const saldoPrev = si + r - fp - pp + dPend + dPago;
+    const saldoReal = si + r - fr - pr + dPago;
     const dividaLine = (dPend!==0 || dPago!==0)
       ? `<div class="pp-line"><span>Dívidas (pendente / pago)</span><span>${fmt(dPend)} / ${fmt(dPago)}</span></div>`
       : "";
@@ -892,12 +880,13 @@ function renderPainel(){
           <div class="pp-box"><div class="label">Saldo previsto</div><div class="value ${saldoPrev>=0?'pos':'neg'}">${fmt(saldoPrev)}</div></div>
           <div class="pp-box"><div class="label">Saldo real</div><div class="value ${saldoReal>=0?'pos':'neg'}">${fmt(saldoReal)}</div></div>
         </div>
-        <div class="pp-line"><span>Conta corrente</span><span>${fmt(conta)}</span></div>
+        <div class="pp-line"><span>Saldo inicial</span><span>${fmt(si)}</span></div>
         <div class="pp-line"><span>Receita</span><span class="pos">${fmt(r)}</span></div>
-        <div class="pp-line"><span>Gasto previsto</span><span>${fmt(gPrev)}</span></div>
-        <div class="pp-line"><span>Gasto real</span><span class="neg">${fmt(gReal)}</span></div>
+        <div class="pp-line"><span>Fatura cartão (${ymLabel(prevM1)})</span><span class="neg">${fmt(fp)}</span></div>
+        <div class="pp-line"><span>Fatura real (${ymLabel(prevM1)})</span><span class="neg">${fmt(fr)}</span></div>
+        <div class="pp-line"><span>🏦 PIX/Débitos (previsto)</span><span>${fmt(pp)}</span></div>
+        <div class="pp-line"><span>🏦 PIX/Débitos (real)</span><span class="neg">${fmt(pr)}</span></div>
         ${dividaLine}
-        <div class="pp-line" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"><span>🏦 Conta corrente inicial</span><span style="font-weight:600">${fmt(conta)}</span></div>
       </div>`;
   }).join("");
 
@@ -1198,33 +1187,6 @@ function escapeHtml(s){
   return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 }
 
-function renderConta(){
-  const ym = state.cursor;
-  const ci = getContaForMonth(ym);
-  const sp1 = ci.p1, sp2 = ci.p2;
-  const total = sp1 + sp2;
-  const projetado = !ci.definido;
-  $("#saldo-p1-label").textContent = state.pessoas[0].nome;
-  $("#saldo-p2-label").textContent = state.pessoas[1].nome;
-  $("#saldo-p1").textContent = fmt(sp1);
-  $("#saldo-p2").textContent = fmt(sp2);
-  $("#saldo-total").textContent = fmt(total);
-  const tagProj = projetado ? ' <span class="tag" style="font-size:9px">projetado</span>' : '';
-  $("#saldo-p1-label").innerHTML = escapeHtml(state.pessoas[0].nome) + tagProj;
-  $("#saldo-p2-label").innerHTML = escapeHtml(state.pessoas[1].nome) + tagProj;
-  $("#input-p1-label").textContent = "Saldo de "+state.pessoas[0].nome+" em "+ymLabel(ym);
-  $("#input-p2-label").textContent = "Saldo de "+state.pessoas[1].nome+" em "+ymLabel(ym);
-  $("#input-saldo-p1").value = "";
-  $("#input-saldo-p2").value = "";
-  $("#input-saldo-p1").placeholder = "Atual: "+fmt(sp1);
-  $("#input-saldo-p2").placeholder = "Atual: "+fmt(sp2);
-  const rec = totaisReceita(ym).total;
-  const gas = totalGastos(ym);
-  $("#proj-atual").textContent = fmt(total);
-  $("#proj-rec").textContent = fmt(rec);
-  $("#proj-gas").textContent = fmt(gas);
-  $("#proj-fim").textContent = fmt(total + rec - gas);
-}
 
 function renderDividas(){
   const arr = (state.dividas||{})[state.cursor]||[];
@@ -1314,38 +1276,6 @@ window.togglePagoDivida = function(id){
   save(); closeModal(); render();
 };
 
-window.formSaldo = function(){
-  const ci = getContaForMonth(state.cursor);
-  openModal(`
-    <h3>Ajustar saldo — ${ymLabel(state.cursor)}</h3>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">${ci.definido?"Valor definido para este mês.":"Valor projetado automaticamente."} Preencha para ajustar.</p>
-    <form id="f">
-      <label>${escapeHtml(state.pessoas[0].nome)}</label>
-      <input name="p1" type="number" step="0.01" inputmode="decimal" placeholder="Atual: ${fmt(ci.p1)}">
-      <label>${escapeHtml(state.pessoas[1].nome)}</label>
-      <input name="p2" type="number" step="0.01" inputmode="decimal" placeholder="Atual: ${fmt(ci.p2)}">
-      <button class="btn" type="submit">Salvar para ${ymLabel(state.cursor)}</button>
-      ${ci.definido?'<div style="height:8px"></div><button class="btn secondary" type="button" id="btn-remover-ajuste">Remover ajuste (voltar ao projetado)</button>':""}
-    </form>
-  `);
-  if(ci.definido){
-    $("#btn-remover-ajuste").addEventListener("click",()=>{
-      delete state.conta[state.cursor];
-      save(); closeModal(); render();
-    });
-  }
-  $("#f").addEventListener("submit",e=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const v1 = fd.get("p1"), v2 = fd.get("p2");
-    if(!state.conta) state.conta = {};
-    const existing = state.conta[state.cursor]||{p1:ci.p1, p2:ci.p2};
-    if(v1!=="") existing.p1 = Number(v1)||0;
-    if(v2!=="") existing.p2 = Number(v2)||0;
-    state.conta[state.cursor] = existing;
-    save(); closeModal(); render();
-  });
-};
 
 window.formQuitarDivida = function(){
   const arr = (state.dividas||{})[state.cursor]||[];
@@ -1463,7 +1393,6 @@ $("#fab").addEventListener("click",()=>{
   else if(view==="variaveis") menuGasto();
   else if(view==="orcamentos") formOrcamento();
   else if(view==="dividas") formDivida();
-  else if(view==="conta") formSaldo();
   else menuGeral();
 });
 
@@ -1740,6 +1669,7 @@ window.removerOrcamento = function(key){
 
 // ============ CONFIG ============
 $("#settings-btn").addEventListener("click",()=>{
+  const si = state.saldoInicial||{};
   openModal(`
     <h3>Configurações</h3>
     <label>Nome da pessoa 1</label>
@@ -1748,11 +1678,29 @@ $("#settings-btn").addEventListener("click",()=>{
     <input id="np2" value="${escapeHtml(state.pessoas[1].nome)}">
     <button class="btn" id="b-save-cfg">Salvar nomes</button>
     <hr>
+    <h3>Saldo inicial da conta</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Informe o saldo na conta corrente no início de um mês. O sistema projeta os meses seguintes automaticamente.</p>
+    <label>Mês de referência</label>
+    <input id="si-mes" type="month" value="${si.mes||state.cursor}">
+    <label>${escapeHtml(state.pessoas[0].nome)} (R$)</label>
+    <input id="si-p1" type="number" step="0.01" inputmode="decimal" value="${si.p1||""}">
+    <label>${escapeHtml(state.pessoas[1].nome)} (R$)</label>
+    <input id="si-p2" type="number" step="0.01" inputmode="decimal" value="${si.p2||""}">
+    <button class="btn" id="b-save-saldo">Salvar saldo inicial</button>
+    <hr>
     <button class="btn danger" id="b-reset">Apagar tudo</button>
   `);
   $("#b-save-cfg").onclick=()=>{
     state.pessoas[0].nome = $("#np1").value||"Pessoa 1";
     state.pessoas[1].nome = $("#np2").value||"Pessoa 2";
+    save(); closeModal(); render();
+  };
+  $("#b-save-saldo").onclick=()=>{
+    state.saldoInicial = {
+      mes: $("#si-mes").value,
+      p1: Number($("#si-p1").value)||0,
+      p2: Number($("#si-p2").value)||0
+    };
     save(); closeModal(); render();
   };
   $("#b-reset").onclick=()=>{
@@ -1774,19 +1722,6 @@ $("#prev-month").onclick=()=>{ state.cursor = shiftMonth(state.cursor,-1); save(
 $("#next-month").onclick=()=>{ state.cursor = shiftMonth(state.cursor, 1); save(); render(); };
 $$(".tab").forEach(t=>t.addEventListener("click",()=>setView(t.dataset.view)));
 
-// Saldo
-$("#btn-salvar-saldo").onclick=()=>{
-  const v1 = $("#input-saldo-p1").value;
-  const v2 = $("#input-saldo-p2").value;
-  if(v1==="" && v2==="") return;
-  if(!state.conta) state.conta = {};
-  const ci = getContaForMonth(state.cursor);
-  const existing = state.conta[state.cursor]||{p1:ci.p1, p2:ci.p2};
-  if(v1!=="") existing.p1 = Number(v1)||0;
-  if(v2!=="") existing.p2 = Number(v2)||0;
-  state.conta[state.cursor] = existing;
-  save(); render();
-};
 
 // Service Worker
 if("serviceWorker" in navigator){

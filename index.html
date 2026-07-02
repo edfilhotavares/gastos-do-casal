@@ -174,6 +174,12 @@ hr{border:0; border-top:1px solid var(--border); margin:14px 0}
 .debt-card{background:var(--surface-2); border-radius:12px; padding:14px; margin-top:10px; text-align:center}
 .debt-card .label{font-size:12px; color:var(--muted); margin-bottom:4px}
 .debt-card .value{font-size:20px; font-weight:700}
+.debt-detail-toggle{font-size:11px; color:var(--accent); cursor:pointer; margin-top:6px; text-decoration:underline}
+.debt-items{margin-top:8px; text-align:left; font-size:12px}
+.debt-items .di{display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid var(--border)}
+.debt-items .di:last-child{border-bottom:none}
+.debt-items .di .di-desc{color:var(--text); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.debt-items .di .di-val{font-weight:600; margin-left:8px; white-space:nowrap}
 @media(min-width:640px){
   main{max-width:560px; margin:0 auto}
   header{max-width:560px; margin:0 auto}
@@ -218,6 +224,7 @@ hr{border:0; border-top:1px solid var(--border); margin:14px 0}
       <div class="debt-card">
         <div class="label" id="lbl-divida-auto">Sem dívidas</div>
         <div class="value pos" id="kpi-divida-auto">R$ 0,00</div>
+        <div id="debt-detail" style="display:none"></div>
       </div>
       <hr>
       <h2>Por pessoa</h2>
@@ -756,33 +763,39 @@ function totalPagadorReal(ym, pagadorKey){
 // Positivo = p2 deve a p1, Negativo = p1 deve a p2
 function calcAutoDebt(ym){
   let debt = 0;
-  function proc(valor, consumidor, pagador){
+  const items = [];
+  function proc(valor, consumidor, pagador, descricao){
     const v = Number(valor)||0;
     const pp = pagadorPessoa(pagador||"cartao_p1");
     const cons = consumidor||"casal";
-    if(cons==="p2" && pp==="p1") debt += v;
-    else if(cons==="p1" && pp==="p2") debt -= v;
-    else if(cons==="casal" && pp==="p1") debt += v/2;
-    else if(cons==="casal" && pp==="p2") debt -= v/2;
+    let contrib = 0;
+    // Dívida só existe quando UMA pessoa consome e a OUTRA paga
+    // Casal nunca gera dívida
+    if(cons==="p2" && pp==="p1") contrib = v;
+    else if(cons==="p1" && pp==="p2") contrib = -v;
+    if(Math.abs(contrib)>=0.01){
+      debt += contrib;
+      items.push({descricao, valor:v, contrib, consumidor:cons, pagador:pagador||"cartao_p1"});
+    }
   }
   // Só itens marcados como dívida entram no cálculo
   state.fixos.forEach(f=>{
     if(f.ativo===false || !f.divida) return;
     if(f.inicio && f.inicio>ym) return;
-    proc(getFixoValorMes(f, ym), f.consumidor, f.pagador);
+    proc(getFixoValorMes(f, ym), f.consumidor, f.pagador, f.descricao);
   });
   state.parcelas.forEach(p=>{
     if(!p.divida) return;
     const idx = mesesEntre(p.inicio,ym);
     if(idx>=0 && idx<Number(p.parcelas)){
-      proc(Number(p.total)/Number(p.parcelas), p.consumidor, p.pagador);
+      proc(Number(p.total)/Number(p.parcelas), p.consumidor, p.pagador, p.descricao+` (${idx+1}/${p.parcelas})`);
     }
   });
   (state.variaveis[ym]||[]).forEach(v=>{
     if(!v.divida) return;
-    proc(v.valor, v.consumidor, v.pagador);
+    proc(v.valor, v.consumidor, v.pagador, v.descricao);
   });
-  return debt;
+  return {debt, items};
 }
 
 // ============ SALDO POR MÊS ============
@@ -942,7 +955,9 @@ function renderPainel(){
   const contaP2Real = totalPagadorReal(ym, "conta_p2");
 
   // Dívida automática
-  const debt = calcAutoDebt(ym);
+  const debtResult = calcAutoDebt(ym);
+  const debt = debtResult.debt;
+  const debtItems = debtResult.items;
 
   // Resumo geral
   $("#kpi-saldo-ini").textContent = fmt(saldoIniTotal);
@@ -974,10 +989,12 @@ function renderPainel(){
   // Dívida automática
   const debtLabel = $("#lbl-divida-auto");
   const debtValue = $("#kpi-divida-auto");
+  const debtDetail = $("#debt-detail");
   if(Math.abs(debt) < 0.01){
     debtLabel.textContent = "Sem dívidas entre vocês";
     debtValue.textContent = "R$ 0,00";
     debtValue.className = "value pos";
+    debtDetail.style.display = "none";
   } else if(debt > 0){
     debtLabel.textContent = escapeHtml(p2Name) + " deve a " + escapeHtml(p1Name);
     debtValue.textContent = fmt(Math.abs(debt));
@@ -986,6 +1003,19 @@ function renderPainel(){
     debtLabel.textContent = escapeHtml(p1Name) + " deve a " + escapeHtml(p2Name);
     debtValue.textContent = fmt(Math.abs(debt));
     debtValue.className = "value neg";
+  }
+  // Detalhamento da dívida
+  if(debtItems.length > 0){
+    debtDetail.style.display = "block";
+    debtDetail.innerHTML = `<div class="debt-detail-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">Ver detalhamento (${debtItems.length} ${debtItems.length===1?'item':'itens'})</div>
+    <div class="debt-items" style="display:none">${debtItems.map(di=>{
+      const sinal = di.contrib > 0 ? '+' : '';
+      const quem = labelConsumidor(di.consumidor);
+      const paga = labelPagadorCurto(di.pagador);
+      return `<div class="di"><span class="di-desc">${escapeHtml(di.descricao)} <span style="color:var(--muted)">(${quem} · ${paga})</span></span><span class="di-val ${di.contrib>0?'neg':'pos'}">${sinal}${fmt(Math.abs(di.contrib))}</span></div>`;
+    }).join("")}</div>`;
+  } else {
+    debtDetail.style.display = "none";
   }
 
   // Por pessoa
@@ -998,8 +1028,13 @@ function renderPainel(){
     const fatReal = key==="p1" ? fatCartP1Real : fatCartP2Real;
     const cPrev = key==="p1" ? contaP1Prev : contaP2Prev;
     const cReal = key==="p1" ? contaP1Real : contaP2Real;
-    const saldoPrev = si + r - fatPrev - cPrev;
-    const saldoReal = si + r - fatReal - cReal;
+    // debt>0 = p2 deve a p1; ajusta: p1 recebe (+), p2 paga (-)
+    const debtAdj = key==="p1" ? debt : -debt;
+    const saldoPrev = si + r - fatPrev - cPrev + debtAdj;
+    const saldoReal = si + r - fatReal - cReal + debtAdj;
+    const debtLine = Math.abs(debt) >= 0.01
+      ? `<div class="pp-line"><span>💸 ${debt>0?(key==="p1"?"Recebe dívida":"Deve"):(key==="p1"?"Deve":"Recebe dívida")}</span><span class="${debtAdj>=0?'pos':'neg'}">${debtAdj>=0?'+':''}${fmt(Math.abs(debt))}</span></div>`
+      : '';
     return `
       <div class="pp-card">
         <div class="pp-head"><strong>${escapeHtml(p.nome)}</strong></div>
@@ -1013,6 +1048,7 @@ function renderPainel(){
         <div class="pp-line"><span>💳 Cartão (real)</span><span class="neg">${fmt(fatReal)}</span></div>
         <div class="pp-line"><span>🏦 Conta (previsto)</span><span class="neg">${fmt(cPrev)}</span></div>
         <div class="pp-line"><span>🏦 Conta (real)</span><span class="neg">${fmt(cReal)}</span></div>
+        ${debtLine}
       </div>`;
   }).join("");
 
@@ -1244,7 +1280,7 @@ function renderVariaveis(){
           <div class="avatar">${cat.icone}</div>
           <div class="info">
             <div class="title">${escapeHtml(p.descricao)} <span class="tag">${idx+1}/${p.parcelas}</span></div>
-            <div class="meta">${cat.nome} • ${labelPagadorCurto(p.pagador)}</div>
+            <div class="meta">${cat.nome} • ${labelPagadorCurto(p.pagador)}${p.divida?' • 💸':''}</div>
           </div>
           <div class="amount neg">${fmt(valor)}</div>
           <button class="del" data-del="parc" data-id="${p.id}">×</button>

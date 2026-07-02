@@ -169,6 +169,8 @@ hr{border:0; border-top:1px solid var(--border); margin:14px 0}
 .tag.p2{color:#ec4899; border-color:#ec4899}
 .tag.split{color:#0ea5e9; border-color:#0ea5e9}
 .tag.conta{color:#f59e0b; border-color:#f59e0b}
+.check-row{display:flex; align-items:center; gap:8px; margin-bottom:12px}
+.check-row input[type="checkbox"]{width:20px; height:20px; margin:0; accent-color:var(--primary)}
 .debt-card{background:var(--surface-2); border-radius:12px; padding:14px; margin-top:10px; text-align:center}
 .debt-card .label{font-size:12px; color:var(--muted); margin-bottom:4px}
 .debt-card .value{font-size:20px; font-weight:700}
@@ -230,6 +232,16 @@ hr{border:0; border-top:1px solid var(--border); margin:14px 0}
     <div class="card">
       <h2>Gastos reais por categoria</h2>
       <canvas id="chart-cat-real" height="200"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Gastos por consumo</h2>
+      <canvas id="chart-consumo" height="200"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Gastos por pagamento</h2>
+      <canvas id="chart-pagamento" height="200"></canvas>
     </div>
 
     <div class="card">
@@ -753,18 +765,21 @@ function calcAutoDebt(ym){
     else if(cons==="casal" && pp==="p1") debt += v/2;
     else if(cons==="casal" && pp==="p2") debt -= v/2;
   }
+  // Só itens marcados como dívida entram no cálculo
   state.fixos.forEach(f=>{
-    if(f.ativo===false) return;
+    if(f.ativo===false || !f.divida) return;
     if(f.inicio && f.inicio>ym) return;
     proc(getFixoValorMes(f, ym), f.consumidor, f.pagador);
   });
   state.parcelas.forEach(p=>{
+    if(!p.divida) return;
     const idx = mesesEntre(p.inicio,ym);
     if(idx>=0 && idx<Number(p.parcelas)){
       proc(Number(p.total)/Number(p.parcelas), p.consumidor, p.pagador);
     }
   });
   (state.variaveis[ym]||[]).forEach(v=>{
+    if(!v.divida) return;
     proc(v.valor, v.consumidor, v.pagador);
   });
   return debt;
@@ -1003,10 +1018,12 @@ function renderPainel(){
 
   drawCategoriaPrevisto(ym);
   drawCategoriaReal(ym);
+  drawConsumo(ym);
+  drawPagamento(ym);
   drawHistorico(ym);
 }
 
-let chartCatPrev, chartCatReal, chartHist;
+let chartCatPrev, chartCatReal, chartConsumo, chartPagamento, chartHist;
 const CHART_COLORS = ["#10b981","#3b82f6","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6","#f97316","#06b6d4","#84cc16","#a855f7","#eab308"];
 
 function drawCategoriaPrevisto(ym){
@@ -1039,6 +1056,54 @@ function drawCategoriaReal(ym){
   chartCatReal = new Chart($("#chart-cat-real"),{
     type:"doughnut",
     data:{labels,datasets:[{data,backgroundColor:CHART_COLORS,borderWidth:0}]},
+    options:{plugins:{legend:{position:"bottom",labels:{color:getCss("--muted"),font:{size:11}}}}}
+  });
+}
+
+function drawConsumo(ym){
+  const arr = gastosDoMes(ym);
+  const tot = {};
+  arr.forEach(g=>{
+    const cons = g.consumidor||"casal";
+    const lbl = labelConsumidor(cons);
+    tot[lbl] = (tot[lbl]||0) + (Number(g.valor)||0);
+  });
+  const labels = Object.keys(tot);
+  const data = Object.values(tot);
+  const colors = ["#6366f1","#ec4899","#0ea5e9"];
+  if(chartConsumo) chartConsumo.destroy();
+  if(data.length===0){
+    const ctx = $("#chart-consumo").getContext("2d");
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+    return;
+  }
+  chartConsumo = new Chart($("#chart-consumo"),{
+    type:"doughnut",
+    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0}]},
+    options:{plugins:{legend:{position:"bottom",labels:{color:getCss("--muted"),font:{size:11}}}}}
+  });
+}
+
+function drawPagamento(ym){
+  const arr = gastosDoMes(ym);
+  const tot = {};
+  arr.forEach(g=>{
+    const pag = g.pagador||"cartao_p1";
+    const lbl = labelPagador(pag);
+    tot[lbl] = (tot[lbl]||0) + (Number(g.valor)||0);
+  });
+  const labels = Object.keys(tot);
+  const data = Object.values(tot);
+  const colors = ["#f59e0b","#f97316","#10b981","#14b8a6"];
+  if(chartPagamento) chartPagamento.destroy();
+  if(data.length===0){
+    const ctx = $("#chart-pagamento").getContext("2d");
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+    return;
+  }
+  chartPagamento = new Chart($("#chart-pagamento"),{
+    type:"doughnut",
+    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0}]},
     options:{plugins:{legend:{position:"bottom",labels:{color:getCss("--muted"),font:{size:11}}}}}
   });
 }
@@ -1139,7 +1204,7 @@ function renderFixos(){
         <div class="avatar">${cat.icone}</div>
         <div class="info">
           <div class="title">${escapeHtml(f.descricao)}${overrideTag}</div>
-          <div class="meta">${cat.nome} • ${labelPagadorCurto(f.pagador)}</div>
+          <div class="meta">${cat.nome} • ${labelPagadorCurto(f.pagador)}${f.divida?' • 💸':''}</div>
         </div>
         <div class="amount neg">${fmt(f.valor)}</div>
         <button class="del" data-del="fix" data-id="${f.id}">×</button>
@@ -1289,7 +1354,7 @@ function itemHtml(g, kind){
       <div class="avatar">${cat.icone}</div>
       <div class="info">
         <div class="title">${escapeHtml(g.descricao)}</div>
-        <div class="meta">${cat.nome} • ${labelPagadorCurto(g.pagador)}</div>
+        <div class="meta">${cat.nome} • ${labelPagadorCurto(g.pagador)}${g.divida?' • 💸':''}</div>
       </div>
       <div class="amount neg">${fmt(g.valor)}</div>
       <button class="del" data-del="${kind}" data-id="${g.id}">×</button>
@@ -1321,7 +1386,7 @@ function selectConsumidorHtml(val="casal"){
   <select name="consumidor">
     <option value="p1" ${val==="p1"?"selected":""}>${escapeHtml(state.pessoas[0].nome)}</option>
     <option value="p2" ${val==="p2"?"selected":""}>${escapeHtml(state.pessoas[1].nome)}</option>
-    <option value="casal" ${val==="casal"?"selected":""}>Casal (50/50)</option>
+    <option value="casal" ${val==="casal"?"selected":""}>Casal</option>
   </select>`;
 }
 
@@ -1333,6 +1398,13 @@ function selectPagadorHtml(val="cartao_p1"){
     <option value="conta_p1" ${val==="conta_p1"?"selected":""}>🏦 Conta ${escapeHtml(state.pessoas[0].nome)}</option>
     <option value="conta_p2" ${val==="conta_p2"?"selected":""}>🏦 Conta ${escapeHtml(state.pessoas[1].nome)}</option>
   </select>`;
+}
+
+function checkDividaHtml(checked=false){
+  return `<div class="check-row">
+    <input type="checkbox" name="divida" value="1" ${checked?"checked":""}>
+    <label style="margin:0;cursor:pointer" onclick="this.previousElementSibling.click()">💸 É dívida (precisa devolver)</label>
+  </div>`;
 }
 
 window.formReceita = function(existing){
@@ -1382,6 +1454,7 @@ window.formFixo = function(existing){
       </select>
       ${selectConsumidorHtml(isEdit?(existing.consumidor||"casal"):"casal")}
       ${selectPagadorHtml(isEdit?(existing.pagador||"cartao_p1"):"cartao_p1")}
+      ${checkDividaHtml(isEdit&&existing.divida)}
       <button class="btn" type="submit">Salvar</button>
       ${isEdit && isOverride?`<div style="height:8px"></div><button class="btn secondary" type="button" onclick="removerOverrideFixo('${existing.id}')">Voltar ao valor padrão (${fmt(Number(existing.valor)||0)})</button>`:""}
     </form>
@@ -1401,15 +1474,16 @@ window.formFixo = function(existing){
           state.fixos[i].categoria = fd.get("categoria");
           state.fixos[i].consumidor = fd.get("consumidor");
           state.fixos[i].pagador = fd.get("pagador");
+          state.fixos[i].divida = !!fd.get("divida");
         } else {
-          state.fixos[i] = {...state.fixos[i], descricao:fd.get("descricao"), valor:valor, categoria:fd.get("categoria"), consumidor:fd.get("consumidor"), pagador:fd.get("pagador")};
+          state.fixos[i] = {...state.fixos[i], descricao:fd.get("descricao"), valor:valor, categoria:fd.get("categoria"), consumidor:fd.get("consumidor"), pagador:fd.get("pagador"), divida:!!fd.get("divida")};
         }
       }
     } else {
       const fixo = {
         id:uid(), descricao:fd.get("descricao"),
         categoria:fd.get("categoria"), consumidor:fd.get("consumidor"),
-        pagador:fd.get("pagador"),
+        pagador:fd.get("pagador"), divida:!!fd.get("divida"),
         inicio:state.cursor, ativo:true
       };
       if(escopo==="mes"){
@@ -1446,6 +1520,7 @@ window.formVariavel = function(existing){
       </div>
       ${selectConsumidorHtml(isEdit?(existing.consumidor||"casal"):"casal")}
       ${selectPagadorHtml(isEdit?(existing.pagador||"cartao_p1"):"cartao_p1")}
+      ${checkDividaHtml(isEdit&&existing.divida)}
       <button class="btn" type="submit">Salvar</button>
     </form>
   `);
@@ -1455,11 +1530,11 @@ window.formVariavel = function(existing){
     const arr = (state.variaveis[state.cursor] ||= []);
     if(isEdit){
       const i = arr.findIndex(x=>x.id===existing.id);
-      if(i>=0) arr[i] = {...arr[i], descricao:fd.get("descricao"), valor:Number(fd.get("valor")), categoria:fd.get("categoria"), consumidor:fd.get("consumidor"), pagador:fd.get("pagador")};
+      if(i>=0) arr[i] = {...arr[i], descricao:fd.get("descricao"), valor:Number(fd.get("valor")), categoria:fd.get("categoria"), consumidor:fd.get("consumidor"), pagador:fd.get("pagador"), divida:!!fd.get("divida")};
     } else {
       arr.push({
         id:uid(), descricao:fd.get("descricao"), valor:Number(fd.get("valor")),
-        categoria:fd.get("categoria"), consumidor:fd.get("consumidor"), pagador:fd.get("pagador")
+        categoria:fd.get("categoria"), consumidor:fd.get("consumidor"), pagador:fd.get("pagador"), divida:!!fd.get("divida")
       });
     }
     save(); closeModal(); render();
@@ -1480,6 +1555,7 @@ window.formParcela = function(existing){
       </div>
       ${selectConsumidorHtml(isEdit?(existing.consumidor||"casal"):"casal")}
       ${selectPagadorHtml(isEdit?(existing.pagador||"cartao_p1"):"cartao_p1")}
+      ${checkDividaHtml(isEdit&&existing.divida)}
       ${isEdit?`<p style="font-size:12px;color:var(--muted);margin:0 0 12px">Início: ${ymLabel(existing.inicio)}.</p>`:`<p style="font-size:12px;color:var(--muted);margin:0 0 12px">A primeira parcela será cobrada em ${ymLabel(state.cursor)}.</p>`}
       <button class="btn" type="submit">Salvar</button>
     </form>
@@ -1489,12 +1565,12 @@ window.formParcela = function(existing){
     const fd=new FormData(e.target);
     if(isEdit){
       const i = state.parcelas.findIndex(x=>x.id===existing.id);
-      if(i>=0) state.parcelas[i] = {...state.parcelas[i], descricao:fd.get("descricao"), total:Number(fd.get("total")), parcelas:Number(fd.get("parcelas")), categoria:fd.get("categoria"), consumidor:fd.get("consumidor"), pagador:fd.get("pagador")};
+      if(i>=0) state.parcelas[i] = {...state.parcelas[i], descricao:fd.get("descricao"), total:Number(fd.get("total")), parcelas:Number(fd.get("parcelas")), categoria:fd.get("categoria"), consumidor:fd.get("consumidor"), pagador:fd.get("pagador"), divida:!!fd.get("divida")};
     } else {
       state.parcelas.push({
         id:uid(), descricao:fd.get("descricao"), total:Number(fd.get("total")),
         parcelas:Number(fd.get("parcelas")), inicio:state.cursor,
-        categoria:fd.get("categoria"), consumidor:fd.get("consumidor"), pagador:fd.get("pagador")
+        categoria:fd.get("categoria"), consumidor:fd.get("consumidor"), pagador:fd.get("pagador"), divida:!!fd.get("divida")
       });
     }
     save(); closeModal(); render();
@@ -1530,6 +1606,7 @@ window.formOrcamento = function(editKey){
       ${isEdit?`<input type="hidden" name="consumidor" value="${consAtual}">
       <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Quem consome: ${labelConsumidor(consAtual)}</p>`:selectConsumidorHtml(consAtual)}
       ${selectPagadorHtml(pagAtual)}
+      ${checkDividaHtml(orcExist&&orcExist.divida)}
       <button class="btn" type="submit">Salvar</button>
       ${isEdit?`<div style="height:8px"></div><button class="btn danger" type="button" onclick="removerOrcamento('${editKey}')">Apagar orçamento</button>`:""}
       ${isEdit && isOverride?`<div style="height:8px"></div><button class="btn secondary" type="button" onclick="removerOverrideMes('${editKey}')">Voltar ao valor padrão (${fmt(Number(orcExist.meta)||0)})</button>`:""}
@@ -1548,6 +1625,7 @@ window.formOrcamento = function(editKey){
     const catId = fd.get("categoria");
     const consumidor = fd.get("consumidor")||"casal";
     const pagador = fd.get("pagador")||"cartao_p1";
+    const divida = !!fd.get("divida");
     let valor = Number(fd.get("meta"));
     if(catId==="lazer") valor = valor*4;
     state.orcamentos = state.orcamentos||{};
@@ -1558,6 +1636,7 @@ window.formOrcamento = function(editKey){
       if(!existing.overrides) existing.overrides = {};
       existing.overrides[state.cursor] = valor;
       existing.pagador = pagador;
+      existing.divida = divida;
       existing.categoria = catId;
       existing.consumidor = consumidor;
       state.orcamentos[key] = existing;
@@ -1569,7 +1648,8 @@ window.formOrcamento = function(editKey){
         meta:valor,
         tipo:catId==="lazer"?"semanal":"mensal",
         consumidor:consumidor,
-        pagador:pagador
+        pagador:pagador,
+        divida:divida
       };
     }
     save(); closeModal(); render();

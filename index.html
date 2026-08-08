@@ -809,10 +809,10 @@ function getSaldoForMonth(ym){
   let cur = si.mes;
   while(cur < ym){
     const rec = totaisReceita(cur);
-    const fatP1 = totalPagadorPrevisto(cur, "cartao_p1");
-    const contaP1 = totalPagadorPrevisto(cur, "conta_p1");
-    const fatP2 = totalPagadorPrevisto(cur, "cartao_p2");
-    const contaP2 = totalPagadorPrevisto(cur, "conta_p2");
+    const fatP1 = totalPagadorReal(cur, "cartao_p1");
+    const contaP1 = totalPagadorReal(cur, "conta_p1");
+    const fatP2 = totalPagadorReal(cur, "cartao_p2");
+    const contaP2 = totalPagadorReal(cur, "conta_p2");
     p1 = p1 + rec.p1 - fatP1 - contaP1;
     p2 = p2 + rec.p2 - fatP2 - contaP2;
     cur = shiftMonth(cur, 1);

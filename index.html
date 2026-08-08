@@ -759,20 +759,19 @@ function totalPagadorReal(ym, pagadorKey){
 }
 
 // ============ DÍVIDA AUTOMÁTICA ============
-// Calcula quanto p2 deve a p1 com base em consumidor vs pagador
+// Calcula quanto p2 deve a p1 baseado no consumidor
+// Se marcou como dívida, o consumidor é quem deve — independente de qual cartão foi usado
 // Positivo = p2 deve a p1, Negativo = p1 deve a p2
 function calcAutoDebt(ym){
   let debt = 0;
   const items = [];
   function proc(valor, consumidor, pagador, descricao){
     const v = Number(valor)||0;
-    const pp = pagadorPessoa(pagador||"cartao_p1");
     const cons = consumidor||"casal";
     let contrib = 0;
-    // Dívida só existe quando UMA pessoa consome e a OUTRA paga
-    // Casal nunca gera dívida
-    if(cons==="p2" && pp==="p1") contrib = v;
-    else if(cons==="p1" && pp==="p2") contrib = -v;
+    // Quem consome é quem deve. Casal nunca gera dívida.
+    if(cons==="p2") contrib = v;
+    else if(cons==="p1") contrib = -v;
     if(Math.abs(contrib)>=0.01){
       debt += contrib;
       items.push({descricao, valor:v, contrib, consumidor:cons, pagador:pagador||"cartao_p1"});
@@ -799,8 +798,8 @@ function calcAutoDebt(ym){
 }
 
 // ============ SALDO POR MÊS ============
-// Ciclo: saldo_final(M) = saldo_ini(M) + receita(M+1) - gastos_pagos_por_pessoa(M)
-// saldo_ini(M+1) = saldo_final(M)
+// saldo_ini(M) = saldo_ini(M-1) + receita(M-1) - gastos(M-1)
+// O que sobrou do mês anterior
 function getSaldoForMonth(ym){
   const si = state.saldoInicial;
   if(!si || !si.mes) return {p1:0, p2:0};
@@ -809,15 +808,14 @@ function getSaldoForMonth(ym){
   let p1 = Number(si.p1)||0, p2 = Number(si.p2)||0;
   let cur = si.mes;
   while(cur < ym){
-    const next = shiftMonth(cur, 1);
-    const rec = totaisReceita(next);
+    const rec = totaisReceita(cur);
     const fatP1 = totalPagadorPrevisto(cur, "cartao_p1");
     const contaP1 = totalPagadorPrevisto(cur, "conta_p1");
     const fatP2 = totalPagadorPrevisto(cur, "cartao_p2");
     const contaP2 = totalPagadorPrevisto(cur, "conta_p2");
     p1 = p1 + rec.p1 - fatP1 - contaP1;
     p2 = p2 + rec.p2 - fatP2 - contaP2;
-    cur = next;
+    cur = shiftMonth(cur, 1);
   }
   return {p1, p2};
 }

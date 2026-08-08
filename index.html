@@ -798,8 +798,8 @@ function calcAutoDebt(ym){
 }
 
 // ============ SALDO POR MÊS ============
-// saldo_ini(M) = saldo_ini(M-1) + receita(M-1) - gastos(M-1)
-// O que sobrou do mês anterior
+// saldo_ini(M+1) = saldo_ini(M) + receita(M+1) - gastos_reais(M)
+// Mesma fórmula do saldo real no painel
 function getSaldoForMonth(ym){
   const si = state.saldoInicial;
   if(!si || !si.mes) return {p1:0, p2:0};
@@ -808,14 +808,15 @@ function getSaldoForMonth(ym){
   let p1 = Number(si.p1)||0, p2 = Number(si.p2)||0;
   let cur = si.mes;
   while(cur < ym){
-    const rec = totaisReceita(cur);
+    const next = shiftMonth(cur, 1);
+    const rec = totaisReceita(next);
     const fatP1 = totalPagadorReal(cur, "cartao_p1");
     const contaP1 = totalPagadorReal(cur, "conta_p1");
     const fatP2 = totalPagadorReal(cur, "cartao_p2");
     const contaP2 = totalPagadorReal(cur, "conta_p2");
     p1 = p1 + rec.p1 - fatP1 - contaP1;
     p2 = p2 + rec.p2 - fatP2 - contaP2;
-    cur = shiftMonth(cur, 1);
+    cur = next;
   }
   return {p1, p2};
 }
@@ -1041,7 +1042,7 @@ function renderPainel(){
           <div class="pp-box"><div class="label">Saldo real</div><div class="value ${saldoReal>=0?'pos':'neg'}">${fmt(saldoReal)}</div></div>
         </div>
         <div class="pp-line"><span>Saldo inicial</span><span>${fmt(si)}</span></div>
-        <div class="pp-line"><span>Receita (${ymLabel(nextYm)})</span><span class="pos">${fmt(r)}</span></div>
+        <div class="pp-line"><span>Receita (${ymLabel(shiftMonth(ym,1))})</span><span class="pos">${fmt(r)}</span></div>
         <div class="pp-line"><span>💳 Cartão (previsto)</span><span class="neg">${fmt(fatPrev)}</span></div>
         <div class="pp-line"><span>💳 Cartão (real)</span><span class="neg">${fmt(fatReal)}</span></div>
         <div class="pp-line"><span>🏦 Conta (previsto)</span><span class="neg">${fmt(cPrev)}</span></div>

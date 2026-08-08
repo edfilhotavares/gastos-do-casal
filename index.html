@@ -814,8 +814,9 @@ function getSaldoForMonth(ym){
     const contaP1 = totalPagadorReal(cur, "conta_p1");
     const fatP2 = totalPagadorReal(cur, "cartao_p2");
     const contaP2 = totalPagadorReal(cur, "conta_p2");
-    p1 = p1 + rec.p1 - fatP1 - contaP1;
-    p2 = p2 + rec.p2 - fatP2 - contaP2;
+    const debtCur = calcAutoDebt(cur).debt;
+    p1 = p1 + rec.p1 - fatP1 - contaP1 + debtCur;
+    p2 = p2 + rec.p2 - fatP2 - contaP2 - debtCur;
     cur = next;
   }
   return {p1, p2};
@@ -1030,7 +1031,8 @@ function renderPainel(){
     // debt>0 = p2 deve a p1; ajusta: p1 recebe (+), p2 paga (-)
     const debtAdj = key==="p1" ? debt : -debt;
     const saldoPrev = si + r - fatPrev - cPrev + debtAdj;
-    const saldoReal = si + r - fatReal - cReal + debtAdj;
+    const nextMonthSaldo = getSaldoForMonth(shiftMonth(ym, 1));
+    const saldoReal = nextMonthSaldo[key];
     const debtLine = Math.abs(debt) >= 0.01
       ? `<div class="pp-line"><span>💸 ${debt>0?(key==="p1"?"Recebe dívida":"Deve"):(key==="p1"?"Deve":"Recebe dívida")}</span><span class="${debtAdj>=0?'pos':'neg'}">${debtAdj>=0?'+':''}${fmt(Math.abs(debt))}</span></div>`
       : '';

@@ -440,6 +440,35 @@ function migrateState(){
     });
     if(changed) state.orcamentos = novo;
   }
+
+  // ---- Migração: orçamentos agora são chaveados por categoria+pagador (não mais consumidor) ----
+  // Em colisão (duas metas antigas caem na mesma chave nova), soma os valores para não perder orçamento.
+  if(state.orcamentos){
+    const orcs = state.orcamentos;
+    const precisaMigrar = Object.entries(orcs).some(([k,o])=> o.consumidor !== undefined || /__(p1|p2|casal)$/.test(k));
+    if(precisaMigrar){
+      const novo = {};
+      Object.values(orcs).forEach(o=>{
+        const pagador = o.pagador||"cartao_p1";
+        delete o.consumidor;
+        const newKey = o.categoria + "__" + pagador;
+        if(novo[newKey]){
+          const existente = novo[newKey];
+          existente.meta = (Number(existente.meta)||0) + (Number(o.meta)||0);
+          if(o.overrides){
+            existente.overrides = existente.overrides||{};
+            Object.entries(o.overrides).forEach(([ym,val])=>{
+              existente.overrides[ym] = (Number(existente.overrides[ym])||0) + (Number(val)||0);
+            });
+          }
+          existente.divida = existente.divida || o.divida;
+        } else {
+          novo[newKey] = o;
+        }
+      });
+      state.orcamentos = novo;
+    }
+  }
 }
 
 async function initializeApp(){
@@ -689,11 +718,11 @@ function totalOrcamentos(ym){
 function gastosSemMeta(ym){
   const orcs = state.orcamentos||{};
   const covered = new Set();
-  Object.values(orcs).forEach(o=> covered.add(orcaKey(o.categoria, o.consumidor)));
+  Object.values(orcs).forEach(o=> covered.add(orcaKey(o.categoria, o.pagador||"cartao_p1")));
   let total = 0;
   const porPessoa = {p1:0, p2:0};
   (state.variaveis[ym]||[]).forEach(v=>{
-    if(!covered.has(orcaKey(v.categoria, v.consumidor||"casal"))){
+    if(!covered.has(orcaKey(v.categoria, v.pagador||"cartao_p1"))){
       total += Number(v.valor)||0;
       const s = calcSplit(v);
       porPessoa.p1 += s.p1; porPessoa.p2 += s.p2;
@@ -722,14 +751,14 @@ function totalPagadorPrevisto(ym, pagadorKey){
   const orcs = state.orcamentos||{};
   const coveredCats = new Set();
   Object.entries(orcs).forEach(([k,o])=>{
-    coveredCats.add(orcaKey(o.categoria, o.consumidor||"casal"));
+    coveredCats.add(orcaKey(o.categoria, o.pagador||"cartao_p1"));
     if((o.pagador||"cartao_p1")!==pagadorKey) return;
     total += getMetaForMonth(o, ym);
   });
   // Gastos sem meta com mesmo pagador
   (state.variaveis[ym]||[]).forEach(v=>{
     if((v.pagador||"cartao_p1")!==pagadorKey) return;
-    if(coveredCats.has(orcaKey(v.categoria, v.consumidor||"casal"))) return;
+    if(coveredCats.has(orcaKey(v.categoria, v.pagador||"cartao_p1"))) return;
     total += Number(v.valor)||0;
   });
   return total;
@@ -797,6 +826,60 @@ function calcAutoDebt(ym){
   return {debt, items};
 }
 
+// ============ DÍVIDA PREVISTA (metas) ============
+// Mesma lógica do calcAutoDebt, mas pro previsto: categorias com meta usam a
+// dívida/valor da própria meta (que já substitui o item no previsto); só cai pro
+// item real quando a categoria+pagador não tem meta, pra não descasar com o valor
+// já usado em fatPrev/cPrev.
+function calcAutoDebtPrevisto(ym){
+  let debt = 0;
+  const items = [];
+  const coveredKeys = new Set();
+  const orcs = state.orcamentos||{};
+  Object.values(orcs).forEach(o=>{
+    coveredKeys.add(orcaKey(o.categoria, o.pagador||"cartao_p1"));
+    if(!o.divida) return;
+    const valor = getMetaForMonth(o, ym);
+    if(Math.abs(valor) < 0.01) return;
+    const quemPaga = pagadorPessoa(o.pagador||"cartao_p1");
+    const devedor = quemPaga==="p1" ? "p2" : "p1";
+    const contrib = devedor==="p2" ? valor : -valor;
+    debt += contrib;
+    items.push({descricao:catMap[o.categoria]?.nome||o.categoria, valor, contrib, consumidor:devedor, pagador:o.pagador||"cartao_p1"});
+  });
+  function proc(valor, consumidor, pagador, descricao){
+    const v = Number(valor)||0;
+    const cons = consumidor||"casal";
+    let contrib = 0;
+    if(cons==="p2") contrib = v;
+    else if(cons==="p1") contrib = -v;
+    if(Math.abs(contrib)>=0.01){
+      debt += contrib;
+      items.push({descricao, valor:v, contrib, consumidor:cons, pagador:pagador||"cartao_p1"});
+    }
+  }
+  state.fixos.forEach(f=>{
+    if(f.ativo===false || !f.divida) return;
+    if(f.inicio && f.inicio>ym) return;
+    if(coveredKeys.has(orcaKey(f.categoria, f.pagador||"cartao_p1"))) return;
+    proc(getFixoValorMes(f, ym), f.consumidor, f.pagador, f.descricao);
+  });
+  state.parcelas.forEach(p=>{
+    if(!p.divida) return;
+    if(coveredKeys.has(orcaKey(p.categoria, p.pagador||"cartao_p1"))) return;
+    const idx = mesesEntre(p.inicio,ym);
+    if(idx>=0 && idx<Number(p.parcelas)){
+      proc(Number(p.total)/Number(p.parcelas), p.consumidor, p.pagador, p.descricao+` (${idx+1}/${p.parcelas})`);
+    }
+  });
+  (state.variaveis[ym]||[]).forEach(v=>{
+    if(!v.divida) return;
+    if(coveredKeys.has(orcaKey(v.categoria, v.pagador||"cartao_p1"))) return;
+    proc(v.valor, v.consumidor, v.pagador, v.descricao);
+  });
+  return {debt, items};
+}
+
 // ============ SALDO POR MÊS ============
 // saldo_ini(M+1) = saldo_ini(M) + receita(M+1) - gastos_reais(M)
 // Mesma fórmula do saldo real no painel
@@ -824,33 +907,6 @@ function getSaldoForMonth(ym){
 
 function totalPrevisto(ym){
   return totalFixosMes(ym) + totalParcelasMes(ym) + totalOrcamentos(ym) + gastosSemMeta(ym).total;
-}
-
-function gastoPrevistoPorPessoa(ym){
-  let p1=0, p2=0;
-  state.fixos.forEach(f=>{
-    if(f.ativo===false) return;
-    if(f.inicio && f.inicio>ym) return;
-    const s = calcSplit({...f, valor:getFixoValorMes(f, ym)});
-    p1 += s.p1; p2 += s.p2;
-  });
-  state.parcelas.forEach(p=>{
-    const idx = mesesEntre(p.inicio, ym);
-    if(idx>=0 && idx<Number(p.parcelas)){
-      const valor = Number(p.total)/Number(p.parcelas);
-      const s = calcSplit({...p, valor});
-      p1 += s.p1; p2 += s.p2;
-    }
-  });
-  const orcs = state.orcamentos||{};
-  Object.entries(orcs).forEach(([k,o])=>{
-    const valor = getMetaForMonth(o, ym);
-    const s = calcSplit({valor, consumidor:o.consumidor||"casal"});
-    p1 += s.p1; p2 += s.p2;
-  });
-  const sem = gastosSemMeta(ym);
-  p1 += sem.p1; p2 += sem.p2;
-  return {p1, p2, total:p1+p2};
 }
 
 // ============ GASTOS POR CATEGORIA (para gráficos) ============
@@ -912,6 +968,22 @@ function gastosPorCategoria(ym, filtrarConsumidor){
   return tot;
 }
 
+function gastosPorCategoriaPagador(ym, pagadorKey){
+  const tot = {};
+  (state.variaveis[ym]||[]).forEach(v=>{
+    if((v.pagador||"cartao_p1")!==pagadorKey) return;
+    tot[v.categoria]=(tot[v.categoria]||0)+(Number(v.valor)||0);
+  });
+  state.parcelas.forEach(p=>{
+    if((p.pagador||"cartao_p1")!==pagadorKey) return;
+    const idx = mesesEntre(p.inicio,ym);
+    if(idx>=0 && idx<Number(p.parcelas)){
+      tot[p.categoria]=(tot[p.categoria]||0)+Number(p.total)/Number(p.parcelas);
+    }
+  });
+  return tot;
+}
+
 // ============ RENDER ============
 const $ = sel => document.querySelector(sel);
 const $$ = sel => document.querySelectorAll(sel);
@@ -954,10 +1026,12 @@ function renderPainel(){
   const contaP2Prev = totalPagadorPrevisto(ym, "conta_p2");
   const contaP2Real = totalPagadorReal(ym, "conta_p2");
 
-  // Dívida automática
+  // Dívida automática (real, baseada nos itens lançados)
   const debtResult = calcAutoDebt(ym);
   const debt = debtResult.debt;
   const debtItems = debtResult.items;
+  // Dívida prevista (usa a meta quando a categoria+pagador tem meta, senão o item real)
+  const debtPrevisto = calcAutoDebtPrevisto(ym).debt;
 
   // Resumo geral
   $("#kpi-saldo-ini").textContent = fmt(saldoIniTotal);
@@ -1030,7 +1104,8 @@ function renderPainel(){
     const cReal = key==="p1" ? contaP1Real : contaP2Real;
     // debt>0 = p2 deve a p1; ajusta: p1 recebe (+), p2 paga (-)
     const debtAdj = key==="p1" ? debt : -debt;
-    const saldoPrev = si + r - fatPrev - cPrev + debtAdj;
+    const debtAdjPrevisto = key==="p1" ? debtPrevisto : -debtPrevisto;
+    const saldoPrev = si + r - fatPrev - cPrev + debtAdjPrevisto;
     const nextMonthSaldo = getSaldoForMonth(shiftMonth(ym, 1));
     const saldoReal = nextMonthSaldo[key];
     const debtLine = Math.abs(debt) >= 0.01
@@ -1310,36 +1385,23 @@ function renderOrcamentos(){
 
   $("#orca-summary").style.display="block";
   let totalMeta = 0, totalGasto = 0;
-  const gastosAll = gastosPorCategoria(state.cursor);
-  const gastosP1 = gastosPorCategoria(state.cursor, "p1");
-  const gastosP2 = gastosPorCategoria(state.cursor, "p2");
-  const gastosShared = {};
-  (state.variaveis[state.cursor]||[]).forEach(v=>{
-    const cons = v.consumidor||"casal";
-    if(cons!=="p1"&&cons!=="p2") gastosShared[v.categoria]=(gastosShared[v.categoria]||0)+(Number(v.valor)||0);
-  });
-  state.parcelas.forEach(p=>{
-    const cons = p.consumidor||"casal";
-    if(cons!=="p1"&&cons!=="p2"){
-      const idx = mesesEntre(p.inicio,state.cursor);
-      if(idx>=0&&idx<Number(p.parcelas)) gastosShared[p.categoria]=(gastosShared[p.categoria]||0)+Number(p.total)/Number(p.parcelas);
-    }
+  const gastosPorPagador = {};
+  ["cartao_p1","cartao_p2","conta_p1","conta_p2"].forEach(pk=>{
+    gastosPorPagador[pk] = gastosPorCategoriaPagador(state.cursor, pk);
   });
 
-  function getGastoForOrca(catId, consumidor){
-    if(consumidor==="p1") return Number(gastosP1[catId])||0;
-    if(consumidor==="p2") return Number(gastosP2[catId])||0;
-    return Number(gastosShared[catId])||0;
+  function getGastoForOrca(catId, pagador){
+    return Number((gastosPorPagador[pagador]||{})[catId])||0;
   }
 
   const orcaItems = keys.map(orcKey=>{
     const orca = orcamentos[orcKey];
-    const cons = orca.consumidor||"casal";
+    const pagador = orca.pagador||"cartao_p1";
     const catId = orca.categoria||orcKey;
     const cat = catMap[catId]||{nome:catId,icone:"📦"};
     const meta = getMetaForMonth(orca, state.cursor);
     const isOverride = orca.overrides && orca.overrides[state.cursor] !== undefined;
-    const gasto = getGastoForOrca(catId, cons);
+    const gasto = getGastoForOrca(catId, pagador);
     const percent = meta>0 ? ((gasto/meta)*100).toFixed(0) : 0;
     const isOver = gasto>meta;
 
@@ -1348,14 +1410,14 @@ function renderOrcamentos(){
 
     const overrideTag = isOverride ? ' <span class="tag" style="font-size:9px">este mês</span>' : '';
 
-    return {consumidor:cons, meta, gasto, html:`
+    return {pagador, meta, gasto, html:`
       <div class="orca-item" data-edit="orca" data-id="${orcKey}">
         <div class="orca-header">
           <span class="ico">${cat.icone}</span>
           <span class="title">${cat.nome}${overrideTag}</span>
           <span class="orca-percent">${percent}%</span>
         </div>
-        <div class="orca-sub">${labelPagadorCurto(orca.pagador)}</div>
+        <div class="orca-sub">${labelPagadorCurto(orca.pagador)}${orca.divida?' • 💸 dívida':''}</div>
         <div class="bar ${isOver?'over':''}"><span style="width:${Math.min(percent,100)}%"></span></div>
         <div class="orca-stats">
           <span>Gasto: ${fmt(gasto)}</span>
@@ -1365,9 +1427,8 @@ function renderOrcamentos(){
   });
 
   const groups = [
-    {key:"p1", label:state.pessoas[0].nome, items:orcaItems.filter(o=>o.consumidor==="p1")},
-    {key:"p2", label:state.pessoas[1].nome, items:orcaItems.filter(o=>o.consumidor==="p2")},
-    {key:"shared", label:"Casal", items:orcaItems.filter(o=>o.consumidor!=="p1"&&o.consumidor!=="p2")},
+    {key:"p1", label:state.pessoas[0].nome, items:orcaItems.filter(o=>pagadorPessoa(o.pagador)==="p1")},
+    {key:"p2", label:state.pessoas[1].nome, items:orcaItems.filter(o=>pagadorPessoa(o.pagador)==="p2")},
   ];
   let orcaHtml = "";
   groups.forEach(g=>{
@@ -1621,7 +1682,6 @@ window.formOrcamento = function(editKey){
   const editCatId = orcExist ? orcExist.categoria : null;
   const metaDoMes = orcExist ? getMetaForMonth(orcExist, state.cursor) : 0;
   const initialValor = orcExist ? (editCatId==="lazer" ? metaDoMes/4 : metaDoMes) : "";
-  const consAtual = orcExist && orcExist.consumidor ? orcExist.consumidor : "casal";
   const pagAtual = orcExist && orcExist.pagador ? orcExist.pagador : "cartao_p1";
   const isOverride = orcExist && orcExist.overrides && orcExist.overrides[state.cursor] !== undefined;
   openModal(`
@@ -1640,10 +1700,9 @@ window.formOrcamento = function(editKey){
         <option value="mes" ${isOverride?"selected":""}>Só este mês (${ymLabel(state.cursor)})</option>
         <option value="todos" ${!isOverride?"selected":""}>Todos os meses</option>
       </select>
-      ${isEdit?`<input type="hidden" name="consumidor" value="${consAtual}">
-      <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Quem consome: ${labelConsumidor(consAtual)}</p>`:selectConsumidorHtml(consAtual)}
       ${selectPagadorHtml(pagAtual)}
       ${checkDividaHtml(orcExist&&orcExist.divida)}
+      <p style="font-size:12px;color:var(--muted);margin:-6px 0 12px">Se for dívida, quem deve é sempre a outra pessoa (não quem paga acima).</p>
       <button class="btn" type="submit">Salvar</button>
       ${isEdit?`<div style="height:8px"></div><button class="btn danger" type="button" onclick="removerOrcamento('${editKey}')">Apagar orçamento</button>`:""}
       ${isEdit && isOverride?`<div style="height:8px"></div><button class="btn secondary" type="button" onclick="removerOverrideMes('${editKey}')">Voltar ao valor padrão (${fmt(Number(orcExist.meta)||0)})</button>`:""}
@@ -1660,31 +1719,33 @@ window.formOrcamento = function(editKey){
     e.preventDefault();
     const fd=new FormData(e.target);
     const catId = fd.get("categoria");
-    const consumidor = fd.get("consumidor")||"casal";
     const pagador = fd.get("pagador")||"cartao_p1";
     const divida = !!fd.get("divida");
     let valor = Number(fd.get("meta"));
     if(catId==="lazer") valor = valor*4;
     state.orcamentos = state.orcamentos||{};
-    const key = isEdit ? editKey : orcaKey(catId, consumidor);
+    const newKey = orcaKey(catId, pagador);
     const escopo = fd.get("escopo")||"todos";
+
+    // Se mudou o pagador durante a edição, a chave muda; remove a antiga (o valor
+    // é preservado no destino — se colidir com outra meta existente, soma nela).
+    if(isEdit && newKey!==editKey) delete state.orcamentos[editKey];
+
     if(escopo==="mes"){
-      const existing = state.orcamentos[key]||{meta:0,tipo:"mensal",categoria:catId,consumidor:consumidor,pagador:pagador};
+      const existing = state.orcamentos[newKey]||{meta:0,tipo:"mensal",categoria:catId,pagador:pagador};
       if(!existing.overrides) existing.overrides = {};
       existing.overrides[state.cursor] = valor;
       existing.pagador = pagador;
       existing.divida = divida;
       existing.categoria = catId;
-      existing.consumidor = consumidor;
-      state.orcamentos[key] = existing;
+      state.orcamentos[newKey] = existing;
     } else {
-      const existing = state.orcamentos[key]||{};
-      state.orcamentos[key] = {
+      const existing = state.orcamentos[newKey]||{};
+      state.orcamentos[newKey] = {
         ...existing,
         categoria:catId,
         meta:valor,
         tipo:catId==="lazer"?"semanal":"mensal",
-        consumidor:consumidor,
         pagador:pagador,
         divida:divida
       };
